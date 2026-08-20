@@ -53,6 +53,7 @@ function renderStatus(stream) {
     ? "Les demandes ne sont pas ouvertes pour le moment."
     : "";
 
+  currentBox.className = stream?.current_title ? "now-playing" : "";
   currentBox.innerHTML = stream?.current_title
     ? `<div class="label">En cours</div>
        <div class="song">${esc(stream.current_artist)} - ${esc(stream.current_title)}</div>
@@ -75,12 +76,25 @@ function renderQueue(rows) {
 }
 
 async function load() {
+  if (!slug) {
+    brand.textContent = "🎸 Rocksmith Live";
+    statusPill.style.display = "none";
+    publicMessage.textContent = "";
+    currentBox.innerHTML = '<div class="empty">Aucun channel précisé. Ajoute <code>?channel=le-slug-du-streamer</code> à l\'URL pour voir sa page.</div>';
+    queue.innerHTML = "";
+    publicLibrary.innerHTML = "";
+    requestForm.style.display = "none";
+    return;
+  }
   try {
     const { data: c, error: ce } = await supabase
       .from("channels").select("*").eq("slug", slug).single();
     if (ce || !c) {
       brand.textContent = "🎸 Rocksmith Live";
-      publicMessage.textContent = "Channel introuvable.";
+      currentBox.innerHTML = '<div class="empty">Ce channel n\'existe pas ou n\'est plus public.</div>';
+      queue.innerHTML = "";
+      publicLibrary.innerHTML = "";
+      requestForm.style.display = "none";
       return;
     }
     channel = c;

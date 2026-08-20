@@ -9,66 +9,80 @@
 <body>
 
 <div class="wrap" id="loginWrap">
-  <header class="brand"><h1>🎸 Rocksmith Live — Admin</h1></header>
-  <form id="loginForm" class="panel">
-    <label for="email">Email</label>
-    <input id="email" type="email" required>
-    <label for="password">Mot de passe</label>
-    <input id="password" type="password" required minlength="6">
-    <div class="actions">
-      <button type="submit" class="primary">Se connecter</button>
-      <button type="button" class="ghost" id="signupBtn">Créer un compte</button>
-    </div>
-    <div id="loginResult"></div>
-  </form>
+  <div class="center-card">
+    <h1>🎸 Admin</h1>
+    <form id="loginForm" class="panel">
+      <label for="email">Email</label>
+      <input id="email" type="email" required autocomplete="username">
+      <label for="password">Mot de passe</label>
+      <input id="password" type="password" required minlength="6" autocomplete="current-password">
+      <div class="actions">
+        <button type="submit" class="primary" id="loginBtn">Se connecter</button>
+        <button type="button" class="ghost" id="signupBtn">Créer un compte</button>
+      </div>
+      <div id="loginResult"></div>
+    </form>
+  </div>
 </div>
 
 <div class="wrap wide" id="adminWrap" style="display:none">
   <header class="brand">
     <h1 id="channelName">🎸 Admin</h1>
-    <div class="row" style="gap:8px">
+    <div class="row" style="gap:8px; flex:none">
       <span class="status-pill" id="statusPill">…</span>
       <button type="button" class="small ghost" id="logoutBtn">Déconnexion</button>
     </div>
   </header>
 
   <div id="setupPanel" style="display:none">
-    <h2 class="eyebrow">Créer ton channel</h2>
-    <form id="setupForm" class="panel">
-      <label for="setupName">Nom affiché</label>
-      <input id="setupName" required maxlength="60">
-      <label for="setupSlug">Slug public (dans l'URL)</label>
-      <input id="setupSlug" required maxlength="40" pattern="[a-z0-9-]+" placeholder="mon-pseudo">
-      <div class="actions"><button type="submit" class="primary">Créer</button></div>
-      <div id="setupResult"></div>
-    </form>
+    <div class="center-card" style="margin-top:4vh">
+      <h1 style="text-align:left">Crée ton channel</h1>
+      <form id="setupForm" class="panel">
+        <label for="setupName">Nom affiché</label>
+        <input id="setupName" required maxlength="60" placeholder="Ex : Alex joue de la basse">
+        <label for="setupSlug">Slug public <span class="optional">(dans l'URL, minuscules et tirets)</span></label>
+        <input id="setupSlug" required maxlength="40" pattern="[a-z0-9-]+" placeholder="mon-pseudo">
+        <div class="actions"><button type="submit" class="primary">Créer mon channel</button></div>
+        <div id="setupResult"></div>
+      </form>
+    </div>
   </div>
 
   <div id="mainPanels" style="display:none">
-    <h2 class="eyebrow">Session live</h2>
-    <div class="panel" style="padding:16px">
+    <div class="panel" style="padding:16px; margin-bottom:24px">
       <div id="streamControls"></div>
     </div>
 
-    <h2 class="eyebrow">Demandes en attente</h2>
-    <div id="pendingRequests"><div class="empty">Chargement…</div></div>
+    <div class="tabs">
+      <button type="button" class="tab active" data-tab="requests">
+        Demandes <span class="badge" id="pendingBadge" style="display:none">0</span>
+      </button>
+      <button type="button" class="tab" data-tab="queue">File d'attente</button>
+      <button type="button" class="tab" data-tab="library">Bibliothèque</button>
+    </div>
 
-    <h2 class="eyebrow">File d'attente</h2>
-    <div id="queuedRequests"><div class="empty">Chargement…</div></div>
+    <div class="tab-panel active" id="panel-requests">
+      <div id="pendingRequests"><div class="empty">Aucune demande en attente.</div></div>
+    </div>
 
-    <h2 class="eyebrow">Bibliothèque</h2>
-    <form id="libForm" class="panel" style="margin-bottom:16px">
-      <div class="row">
-        <div><label for="libArtist">Artiste</label><input id="libArtist" required></div>
-        <div><label for="libTitle">Titre</label><input id="libTitle" required></div>
-      </div>
-      <div class="row">
-        <div><label for="libTuning">Accordage</label><input id="libTuning"></div>
-        <div><label for="libInstrument">Instrument</label><input id="libInstrument"></div>
-      </div>
-      <div class="actions"><button type="submit" class="primary">Ajouter à la bibliothèque</button></div>
-    </form>
-    <div id="libraryTable"></div>
+    <div class="tab-panel" id="panel-queue">
+      <div id="queuedRequests"><div class="empty">File vide.</div></div>
+    </div>
+
+    <div class="tab-panel" id="panel-library">
+      <form id="libForm" class="panel" style="margin-bottom:16px">
+        <div class="row">
+          <div><label for="libArtist">Artiste</label><input id="libArtist" required></div>
+          <div><label for="libTitle">Titre</label><input id="libTitle" required></div>
+        </div>
+        <div class="row">
+          <div><label for="libTuning">Accordage <span class="optional">(optionnel)</span></label><input id="libTuning"></div>
+          <div><label for="libInstrument">Instrument <span class="optional">(optionnel)</span></label><input id="libInstrument"></div>
+        </div>
+        <div class="actions"><button type="submit" class="primary">Ajouter à la bibliothèque</button></div>
+      </form>
+      <div id="libraryList"><div class="empty">Bibliothèque vide.</div></div>
+    </div>
   </div>
 </div>
 

@@ -9,6 +9,17 @@ function slugify(s) {
     .toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
+function initTabs() {
+  document.querySelectorAll(".tab").forEach((btn) => {
+    btn.onclick = () => {
+      document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById(`panel-${btn.dataset.tab}`).classList.add("active");
+    };
+  });
+}
+
 async function boot() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) {
@@ -52,6 +63,7 @@ async function loadChannel() {
   channelName.textContent = `🎸 ${channel.display_name}`;
   setupPanel.style.display = "none";
   mainPanels.style.display = "block";
+  initTabs();
   await refreshAll();
   subscribeRealtime();
 }
@@ -144,18 +156,23 @@ function renderRequests(all) {
     return (a.queue_position ?? 0) - (b.queue_position ?? 0);
   });
 
+  pendingBadge.style.display = pending.length ? "inline-block" : "none";
+  pendingBadge.textContent = pending.length;
+
   pendingRequests.innerHTML = pending.length ? pending.map((r) => `
     <div class="ticket">
       <div class="body">
         <div class="song">${esc(r.artist)} - ${esc(r.title)}</div>
         <div class="meta">👤 ${esc(r.pseudo)}${r.tuning ? ` · ${esc(r.tuning)}` : ""}${r.note ? ` · "${esc(r.note)}"` : ""}</div>
       </div>
-      <button type="button" class="small primary" data-accept="${r.id}">Accepter</button>
-      <button type="button" class="small danger" data-reject="${r.id}">Refuser</button>
+      <div class="actions-inline">
+        <button type="button" class="small primary" data-accept="${r.id}">Accepter</button>
+        <button type="button" class="small danger" data-reject="${r.id}">Refuser</button>
+      </div>
     </div>`).join("") : '<div class="empty">Aucune demande en attente.</div>';
 
   queuedRequests.innerHTML = queued.length ? queued.map((r, i) => `
-    <div class="ticket">
+    <div class="ticket ${r.status === "playing" ? "playing" : ""}">
       <div class="pos">${r.status === "playing" ? "▶" : `#${i + (queued[0]?.status === "playing" ? 0 : 1)}`}</div>
       <div class="body">
         <div class="song">${esc(r.artist)} - ${esc(r.title)}</div>
@@ -207,21 +224,19 @@ async function finishRequest(id) {
 // ---- Library ----
 
 function renderLibrary(rows) {
-  libraryTable.innerHTML = rows.length ? `
-    <table>
-      <thead><tr><th>Morceau</th><th>Accordage</th><th>Statut</th><th></th></tr></thead>
-      <tbody>
-        ${rows.map((x) => `
-          <tr>
-            <td>${esc(x.artist)} - ${esc(x.title)}</td>
-            <td class="muted">${esc(x.tuning || "—")}</td>
-            <td>${x.is_blocked ? `<span class="muted">🚫 ${esc(x.blocked_reason || "Indisponible")}</span>` : "✅ Disponible"}</td>
-            <td><button type="button" class="small" data-toggle="${x.id}" data-blocked="${x.is_blocked}">${x.is_blocked ? "Débloquer" : "Bloquer"}</button></td>
-          </tr>`).join("")}
-      </tbody>
-    </table>` : '<div class="empty">Bibliothèque vide.</div>';
+  libraryList.innerHTML = rows.length ? `<div class="lib-list">${rows.map((x) => `
+    <div class="lib-row">
+      <div class="info">
+        <div class="title">${esc(x.artist)} - ${esc(x.title)}</div>
+        <div class="sub">${esc(x.tuning || "Accordage non précisé")}${x.instrument ? ` · ${esc(x.instrument)}` : ""}</div>
+      </div>
+      <span class="badge-state ${x.is_blocked ? "blocked" : "ok"}">
+        ${x.is_blocked ? `🚫 ${esc(x.blocked_reason || "Indisponible")}` : "✅ Disponible"}
+      </span>
+      <button type="button" class="small" data-toggle="${x.id}" data-blocked="${x.is_blocked}">${x.is_blocked ? "Débloquer" : "Bloquer"}</button>
+    </div>`).join("")}</div>` : '<div class="empty">Bibliothèque vide. Ajoute ton premier morceau ci-dessus.</div>';
 
-  libraryTable.querySelectorAll("[data-toggle]").forEach((b) => {
+  libraryList.querySelectorAll("[data-toggle]").forEach((b) => {
     b.onclick = async () => {
       const isBlocked = b.dataset.blocked === "true";
       let reason = null;

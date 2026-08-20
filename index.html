@@ -16,10 +16,10 @@
   <p id="publicMessage" class="muted"></p>
 
   <h2 class="eyebrow">En cours</h2>
-  <div id="currentBox" class="now-playing"><div class="empty">Chargement…</div></div>
+  <div id="currentBox"><div class="skeleton skeleton-card"></div></div>
 
   <h2 class="eyebrow">File d'attente</h2>
-  <div id="queue"><div class="empty">Chargement…</div></div>
+  <div id="queue"><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div></div>
 
   <h2 class="eyebrow">Demander un morceau</h2>
   <form id="requestForm" class="panel">
@@ -59,8 +59,10 @@
   </form>
 
   <h2 class="eyebrow">Bibliothèque</h2>
-  <input id="librarySearch" placeholder="Rechercher un artiste ou un titre…" style="margin-bottom:12px">
-  <div id="publicLibrary"><div class="empty">Chargement…</div></div>
+  <div class="search-field">
+    <input id="librarySearch" placeholder="Rechercher un artiste ou un titre…">
+  </div>
+  <div id="publicLibrary"><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div></div>
 </div>
 
 <div id="toast" class="toast"></div>
