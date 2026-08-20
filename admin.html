@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rocksmith Live — Admin</title>
-<link rel="stylesheet" href="styles.css?v=20260820201532">
+<link rel="stylesheet" href="styles.css?v=20260820204746">
 </head>
 <body>
 
@@ -59,6 +59,7 @@
       </button>
       <button type="button" class="tab" data-tab="queue">File d'attente</button>
       <button type="button" class="tab" data-tab="library">Bibliothèque</button>
+      <button type="button" class="tab" data-tab="instruments">Instruments</button>
       <button type="button" class="tab" data-tab="settings">Paramètres</button>
     </div>
 
@@ -85,6 +86,34 @@
       <div id="libraryList"><div class="empty">Bibliothèque vide.</div></div>
     </div>
 
+    <div class="tab-panel" id="panel-instruments">
+      <form id="instrumentForm" class="panel" style="margin-bottom:16px">
+        <label for="instName">Nom <span class="optional">(optionnel)</span></label>
+        <input id="instName" maxlength="60" placeholder="Ex : Music Man SUB5">
+
+        <div class="row">
+          <div>
+            <label for="instType">Type d'instrument</label>
+            <select id="instType">
+              <option value="basse">Basse</option>
+              <option value="guitare">Guitare</option>
+            </select>
+          </div>
+          <div>
+            <label for="instStrings">Nombre de cordes</label>
+            <select id="instStrings"></select>
+          </div>
+        </div>
+
+        <label for="instTuning">Accordage</label>
+        <select id="instTuning"></select>
+        <input id="instTuningCustom" style="display:none; margin-top:8px" placeholder="Ex : Drop C# personnalisé" maxlength="40">
+
+        <div class="actions"><button type="submit" class="primary">Ajouter l'instrument</button></div>
+      </form>
+      <div id="instrumentsList"><div class="empty">Aucun instrument configuré.</div></div>
+    </div>
+
     <div class="tab-panel" id="panel-settings">
       <div class="panel">
         <label for="settingsSlug">Slug public <span class="optional">(non modifiable)</span></label>
@@ -97,6 +126,6 @@
 <div id="toast" class="toast"></div>
 
 <script src="config.js"></script>
-<script type="module" src="admin.js?v=20260820201532"></script>
+<script type="module" src="admin.js?v=20260820204746"></script>
 </body>
 </html>

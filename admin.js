@@ -9,6 +9,145 @@ function slugify(s) {
     .toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
+// ---- Presets d'accordages par type + nombre de cordes ----
+const TUNING_PRESETS = {
+  "basse-4": ["EADG (standard)", "DADG (drop D)"],
+  "basse-5": ["BEADG (standard 5)", "CEADG (drop)"],
+  "basse-6": ["BEADGC (standard 6)"],
+  "guitare-6": ["EADGBE (standard)", "DADGBE (drop D)", "D#G#C#F#A#D# (standard Eb)", "DGCFAD (standard D)", "CGCFAD (drop C)"],
+  "guitare-7": ["BEADGBE (standard 7)", "AEADGBE (drop A)"],
+  "guitare-8": ["F#BEADGBE (standard 8)"],
+};
+
+function stringCountOptions(type) {
+  return type === "guitare" ? [6, 7, 8] : [4, 5, 6];
+}
+
+function refreshInstrumentFormOptions() {
+  const type = instType.value;
+  const counts = stringCountOptions(type);
+  instStrings.innerHTML = counts.map((c) => `<option value="${c}">${c} cordes</option>`).join("");
+  refreshTuningOptions();
+}
+
+function refreshTuningOptions() {
+  const key = `${instType.value}-${instStrings.value}`;
+  const presets = TUNING_PRESETS[key] || [];
+  instTuning.innerHTML = presets.map((t) => `<option value="${t}">${t}</option>`).join("")
+    + '<option value="__custom__">Custom…</option>';
+  instTuningCustom.style.display = "none";
+  instTuningCustom.value = "";
+}
+
+instType.addEventListener("change", refreshInstrumentFormOptions);
+instStrings.addEventListener("change", refreshTuningOptions);
+instTuning.addEventListener("change", () => {
+  instTuningCustom.style.display = instTuning.value === "__custom__" ? "block" : "none";
+});
+refreshInstrumentFormOptions();
+
+instrumentForm.onsubmit = async (e) => {
+  e.preventDefault();
+  const tuning = instTuning.value === "__custom__" ? instTuningCustom.value.trim() : instTuning.value;
+  if (!tuning) return toast("Précise un accordage.", true);
+
+  const { data: existing } = await supabase.from("instruments").select("id").eq("channel_id", channel.id).limit(1);
+  const { error } = await supabase.from("instruments").insert({
+    channel_id: channel.id,
+    name: instName.value.trim() || null,
+    type: instType.value,
+    string_count: Number(instStrings.value),
+    tuning,
+    is_active: !existing?.length, // le premier instrument créé devient actif automatiquement
+  });
+  if (error) return toast(error.message, true);
+  e.target.reset();
+  refreshInstrumentFormOptions();
+  await refreshAll();
+};
+
+function renderInstruments(rows) {
+  instrumentsList.innerHTML = rows.length ? `<div class="lib-list">${rows.map((x) => `
+    <div class="lib-row">
+      <div class="info">
+        <div class="title">${esc(x.name || `${x.type === "basse" ? "Basse" : "Guitare"} ${x.string_count} cordes`)}${x.is_active ? " · <span style=\"color:var(--ember)\">Actif</span>" : ""}</div>
+        <div class="sub">${esc(x.type === "basse" ? "Basse" : "Guitare")} · ${x.string_count} cordes · ${esc(x.tuning)}</div>
+      </div>
+      <span class="badge-state ${x.is_available ? "ok" : "blocked"}">
+        ${x.is_available ? "✅ Disponible" : `🚫 ${esc(x.unavailable_reason || "Indisponible")}`}
+      </span>
+      ${!x.is_active ? `<button type="button" class="small primary" data-activate="${x.id}">Activer</button>` : ""}
+      <button type="button" class="small" data-toggle-avail="${x.id}" data-available="${x.is_available}">${x.is_available ? "Marquer indisponible" : "Marquer disponible"}</button>
+      <button type="button" class="small danger" data-delete-inst="${x.id}">Supprimer</button>
+    </div>`).join("")}</div>` : '<div class="empty">Aucun instrument configuré. Ajoute ton premier instrument ci-dessus.</div>';
+
+  instrumentsList.querySelectorAll("[data-activate]").forEach((b) => {
+    b.onclick = async () => {
+      await supabase.from("instruments").update({ is_active: false }).eq("channel_id", channel.id).eq("is_active", true);
+      const { error } = await supabase.from("instruments").update({ is_active: true }).eq("id", b.dataset.activate);
+      if (error) return toast(error.message, true);
+      await refreshAll();
+    };
+  });
+
+  instrumentsList.querySelectorAll("[data-toggle-avail]").forEach((b) => {
+    b.onclick = () => {
+      const isAvailable = b.dataset.available === "true";
+      if (isAvailable) return toggleInstrumentAvailability(b.dataset.toggleAvail, false, null);
+      if (b.dataset.formOpen) return;
+      b.dataset.formOpen = "1";
+      const row = b.closest(".lib-row");
+      const box = document.createElement("div");
+      box.className = "inline-confirm";
+      box.style.flexBasis = "100%";
+      box.innerHTML = `
+        <p>Raison (optionnel) :</p>
+        <input type="text" maxlength="200" placeholder="Ex : en réparation">
+        <div class="row">
+          <button type="button" class="small danger" data-do-unavail>Confirmer</button>
+          <button type="button" class="small ghost" data-cancel-unavail>Annuler</button>
+        </div>`;
+      row.appendChild(box);
+      const input = box.querySelector("input");
+      input.focus();
+      box.querySelector("[data-cancel-unavail]").onclick = () => { box.remove(); delete b.dataset.formOpen; };
+      box.querySelector("[data-do-unavail]").onclick = () => toggleInstrumentAvailability(b.dataset.toggleAvail, true, input.value.trim() || "Indisponible");
+    };
+  });
+
+  instrumentsList.querySelectorAll("[data-delete-inst]").forEach((b) => {
+    b.onclick = () => {
+      if (b.dataset.formOpen) return;
+      b.dataset.formOpen = "1";
+      const row = b.closest(".lib-row");
+      const box = document.createElement("div");
+      box.className = "inline-confirm";
+      box.style.flexBasis = "100%";
+      box.innerHTML = `
+        <p>Supprimer définitivement cet instrument ?</p>
+        <div class="row">
+          <button type="button" class="small danger" data-do-delete-inst>Oui, supprimer</button>
+          <button type="button" class="small ghost" data-cancel-delete-inst>Annuler</button>
+        </div>`;
+      row.appendChild(box);
+      box.querySelector("[data-cancel-delete-inst]").onclick = () => { box.remove(); delete b.dataset.formOpen; };
+      box.querySelector("[data-do-delete-inst]").onclick = async () => {
+        const { error } = await supabase.from("instruments").delete().eq("id", b.dataset.deleteInst);
+        if (error) return toast(error.message, true);
+        await refreshAll();
+      };
+    };
+  });
+}
+
+async function toggleInstrumentAvailability(id, blocked, reason) {
+  const { error } = await supabase.from("instruments")
+    .update({ is_available: !blocked, unavailable_reason: blocked ? reason : null })
+    .eq("id", id);
+  if (error) return toast(error.message, true);
+  await refreshAll();
+}
+
 function initTabs() {
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.onclick = () => {
@@ -82,21 +221,24 @@ setupForm.onsubmit = async (e) => {
 };
 
 async function refreshAll() {
-  const [streamRes, reqRes, libRes] = await Promise.all([
+  const [streamRes, reqRes, libRes, instRes] = await Promise.all([
     supabase.from("streams").select("*").eq("channel_id", channel.id).order("started_at", { ascending: false }).limit(1),
     supabase.from("requests").select("*").eq("channel_id", channel.id).order("created_at"),
     supabase.from("song_library").select("*").eq("channel_id", channel.id).order("artist").order("title"),
+    supabase.from("instruments").select("*").eq("channel_id", channel.id).order("created_at"),
   ]);
   stream = streamRes.data?.[0] || null;
   renderStreamControls();
   renderRequests(reqRes.data || []);
   renderLibrary(libRes.data || []);
+  renderInstruments(instRes.data || []);
 }
 
 function subscribeRealtime() {
   supabase.channel(`admin-${channel.id}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "requests", filter: `channel_id=eq.${channel.id}` }, refreshAll)
     .on("postgres_changes", { event: "*", schema: "public", table: "streams", filter: `channel_id=eq.${channel.id}` }, refreshAll)
+    .on("postgres_changes", { event: "*", schema: "public", table: "instruments", filter: `channel_id=eq.${channel.id}` }, refreshAll)
     .subscribe();
 }
 
