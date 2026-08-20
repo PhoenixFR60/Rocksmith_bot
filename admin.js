@@ -61,6 +61,7 @@ async function loadChannel() {
   }
   channel = data;
   channelName.textContent = `🎸 ${channel.display_name}`;
+  settingsSlug.value = channel.slug;
   setupPanel.style.display = "none";
   mainPanels.style.display = "block";
   initTabs();

@@ -59,6 +59,7 @@
       </button>
       <button type="button" class="tab" data-tab="queue">File d'attente</button>
       <button type="button" class="tab" data-tab="library">Bibliothèque</button>
+      <button type="button" class="tab" data-tab="settings">Paramètres</button>
     </div>
 
     <div class="tab-panel active" id="panel-requests">
@@ -82,6 +83,13 @@
         <div class="actions"><button type="submit" class="primary">Ajouter à la bibliothèque</button></div>
       </form>
       <div id="libraryList"><div class="empty">Bibliothèque vide.</div></div>
+    </div>
+
+    <div class="tab-panel" id="panel-settings">
+      <div class="panel">
+        <label for="settingsSlug">Slug public <span class="optional">(non modifiable)</span></label>
+        <input id="settingsSlug" type="text" readonly disabled>
+      </div>
     </div>
   </div>
 </div>

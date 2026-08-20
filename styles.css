@@ -296,6 +296,11 @@ input:focus, textarea:focus, select:focus {
 }
 textarea { resize: vertical; min-height: 60px; }
 input::placeholder, textarea::placeholder { color: var(--text-faint); }
+input[readonly], input:disabled {
+  color: var(--text-dim);
+  background: var(--ink-2);
+  cursor: default;
+}
 
 button {
   font-family: var(--font-body);
