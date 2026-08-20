@@ -457,4 +457,42 @@ libForm.onsubmit = async (e) => {
   await refreshAll();
 };
 
+// ---- Matcher (mode test / dry-run) ----
+
+matcherForm.onsubmit = async (e) => {
+  e.preventDefault();
+  matcherBtn.disabled = true;
+  matcherResult.innerHTML = '<div class="skeleton skeleton-card"></div>';
+
+  const { data, error } = await supabase.functions.invoke("song-matcher", {
+    body: { artist: matcherArtist.value.trim(), title: matcherTitle.value.trim() },
+  });
+
+  matcherBtn.disabled = false;
+
+  if (error) {
+    matcherResult.innerHTML = `<div class="notice error">${esc(error.message)}</div>`;
+    return;
+  }
+  if (data?.error) {
+    matcherResult.innerHTML = `<div class="notice error">${esc(data.error)}</div>`;
+    return;
+  }
+
+  const candidates = data.candidates || [];
+  matcherResult.innerHTML = `
+    ${candidates.length ? candidates.map((c) => `
+      <div class="ticket ${c.score >= 85 ? "playing" : ""}">
+        <div class="pos">${c.score}%</div>
+        <div class="body">
+          <div class="song">${esc(c.artist)} - ${esc(c.title)}</div>
+          <div class="meta">Sources : ${c.sources.map(esc).join(", ")}</div>
+        </div>
+      </div>`).join("") : '<div class="empty">Aucune correspondance trouvée.</div>'}
+    <div class="small muted" style="margin-top:10px">
+      Statut des sources : ${Object.entries(data.source_status || {}).map(([k, v]) => `${esc(k)} → ${esc(v)}`).join(" · ")}
+    </div>
+  `;
+};
+
 boot();

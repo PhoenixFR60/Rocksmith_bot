@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rocksmith Live — Admin</title>
-<link rel="stylesheet" href="styles.css?v=20260820204746">
+<link rel="stylesheet" href="styles.css?v=20260820211728">
 </head>
 <body>
 
@@ -60,6 +60,7 @@
       <button type="button" class="tab" data-tab="queue">File d'attente</button>
       <button type="button" class="tab" data-tab="library">Bibliothèque</button>
       <button type="button" class="tab" data-tab="instruments">Instruments</button>
+      <button type="button" class="tab" data-tab="matcher">Matcher</button>
       <button type="button" class="tab" data-tab="settings">Paramètres</button>
     </div>
 
@@ -114,6 +115,21 @@
       <div id="instrumentsList"><div class="empty">Aucun instrument configuré.</div></div>
     </div>
 
+    <div class="tab-panel" id="panel-matcher">
+      <p class="muted small" style="margin-bottom:16px">
+        Teste le Smart Song Matcher sans créer de vraie demande. Le score tient compte
+        du consensus entre sources — 85% et plus est considéré comme fiable.
+      </p>
+      <form id="matcherForm" class="panel" style="margin-bottom:16px">
+        <div class="row">
+          <div><label for="matcherArtist">Artiste</label><input id="matcherArtist" required placeholder="Ex : The Warning"></div>
+          <div><label for="matcherTitle">Titre</label><input id="matcherTitle" required placeholder="Ex : sike"></div>
+        </div>
+        <div class="actions"><button type="submit" class="primary" id="matcherBtn">Tester</button></div>
+      </form>
+      <div id="matcherResult"></div>
+    </div>
+
     <div class="tab-panel" id="panel-settings">
       <div class="panel">
         <label for="settingsSlug">Slug public <span class="optional">(non modifiable)</span></label>
@@ -126,6 +142,6 @@
 <div id="toast" class="toast"></div>
 
 <script src="config.js"></script>
-<script type="module" src="admin.js?v=20260820204746"></script>
+<script type="module" src="admin.js?v=20260820211728"></script>
 </body>
 </html>
