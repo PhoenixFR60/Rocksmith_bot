@@ -416,6 +416,7 @@ button.icon { width: 42px; padding: 0; flex-shrink: 0; }
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 12px 14px;
+  flex-wrap: wrap;
 }
 .lib-row .info { flex: 1; min-width: 0; }
 .lib-row .title { font-weight: 600; overflow-wrap: anywhere; }
@@ -431,7 +432,20 @@ button.icon { width: 42px; padding: 0; flex-shrink: 0; }
 .badge-state.ok { color: var(--ok); background: var(--ok-glow); }
 .badge-state.blocked { color: var(--danger); background: var(--danger-glow); }
 
-/* ---- Login / setup card ---- */
+/* ---- Inline confirm/prompt (replaces window.confirm/prompt) ---- */
+.inline-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--ink-3);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-top: 8px;
+  animation: slide-in 0.15s var(--ease);
+}
+.inline-confirm p { margin: 0; font-size: 0.85rem; color: var(--text-dim); }
+.inline-confirm .row { gap: 8px; }
 .center-card {
   max-width: 380px;
   margin: 10vh auto 0;

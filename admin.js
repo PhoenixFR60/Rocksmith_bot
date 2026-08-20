@@ -134,10 +134,21 @@ async function startStream() {
 }
 
 async function endStream() {
-  if (!confirm("Terminer le live en cours ?")) return;
-  const { error } = await supabase.from("streams").update({ status: "ended", ended_at: new Date().toISOString(), request_state: "closed" }).eq("id", stream.id);
-  if (error) return toast(error.message, true);
-  await refreshAll();
+  const box = document.createElement("div");
+  box.className = "inline-confirm";
+  box.innerHTML = `
+    <p>Terminer le live en cours ? Cette action ferme aussi les demandes.</p>
+    <div class="row">
+      <button type="button" class="small danger" id="confirmEndBtn">Oui, terminer</button>
+      <button type="button" class="small ghost" id="cancelEndBtn">Annuler</button>
+    </div>`;
+  streamControls.appendChild(box);
+  document.getElementById("cancelEndBtn").onclick = () => box.remove();
+  document.getElementById("confirmEndBtn").onclick = async () => {
+    const { error } = await supabase.from("streams").update({ status: "ended", ended_at: new Date().toISOString(), request_state: "closed" }).eq("id", stream.id);
+    if (error) return toast(error.message, true);
+    await refreshAll();
+  };
 }
 
 async function setRequestState(s) {
@@ -182,9 +193,29 @@ function renderRequests(all) {
     </div>`).join("") : '<div class="empty">File vide.</div>';
 
   pendingRequests.querySelectorAll("[data-accept]").forEach((b) => b.onclick = () => acceptRequest(b.dataset.accept));
-  pendingRequests.querySelectorAll("[data-reject]").forEach((b) => b.onclick = () => rejectRequest(b.dataset.reject));
+  pendingRequests.querySelectorAll("[data-reject]").forEach((b) => b.onclick = () => showRejectForm(b));
   queuedRequests.querySelectorAll("[data-play]").forEach((b) => b.onclick = () => playRequest(b.dataset.play));
   queuedRequests.querySelectorAll("[data-finish]").forEach((b) => b.onclick = () => finishRequest(b.dataset.finish));
+}
+
+function showRejectForm(btn) {
+  if (btn.dataset.formOpen) return;
+  btn.dataset.formOpen = "1";
+  const ticket = btn.closest(".ticket");
+  const box = document.createElement("div");
+  box.className = "inline-confirm";
+  box.innerHTML = `
+    <p>Raison du refus (optionnel) :</p>
+    <input type="text" maxlength="200" placeholder="Ex : déjà joué récemment">
+    <div class="row">
+      <button type="button" class="small danger" data-do-reject>Confirmer le refus</button>
+      <button type="button" class="small ghost" data-cancel-reject>Annuler</button>
+    </div>`;
+  ticket.appendChild(box);
+  const input = box.querySelector("input");
+  input.focus();
+  box.querySelector("[data-cancel-reject]").onclick = () => { box.remove(); delete btn.dataset.formOpen; };
+  box.querySelector("[data-do-reject]").onclick = () => rejectRequest(btn.dataset.reject, input.value.trim() || null);
 }
 
 async function acceptRequest(id) {
@@ -196,8 +227,7 @@ async function acceptRequest(id) {
   await refreshAll();
 }
 
-async function rejectRequest(id) {
-  const reason = prompt("Raison du refus (optionnel) :") || null;
+async function rejectRequest(id, reason) {
   const { error } = await supabase.from("requests").update({ status: "rejected", rejection_reason: reason }).eq("id", id);
   if (error) return toast(error.message, true);
   await refreshAll();
@@ -237,17 +267,37 @@ function renderLibrary(rows) {
     </div>`).join("")}</div>` : '<div class="empty">Bibliothèque vide. Ajoute ton premier morceau ci-dessus.</div>';
 
   libraryList.querySelectorAll("[data-toggle]").forEach((b) => {
-    b.onclick = async () => {
+    b.onclick = () => {
       const isBlocked = b.dataset.blocked === "true";
-      let reason = null;
-      if (!isBlocked) reason = prompt("Raison (optionnel) :") || "Indisponible";
-      const { error } = await supabase.from("song_library")
-        .update({ is_blocked: !isBlocked, blocked_reason: !isBlocked ? reason : null })
-        .eq("id", b.dataset.toggle);
-      if (error) return toast(error.message, true);
-      await refreshAll();
+      if (isBlocked) return toggleBlock(b.dataset.toggle, false, null);
+      if (b.dataset.formOpen) return;
+      b.dataset.formOpen = "1";
+      const row = b.closest(".lib-row");
+      const box = document.createElement("div");
+      box.className = "inline-confirm";
+      box.style.flexBasis = "100%";
+      box.innerHTML = `
+        <p>Raison du blocage (optionnel) :</p>
+        <input type="text" maxlength="200" placeholder="Ex : trop difficile pour l'instant">
+        <div class="row">
+          <button type="button" class="small danger" data-do-block>Confirmer le blocage</button>
+          <button type="button" class="small ghost" data-cancel-block>Annuler</button>
+        </div>`;
+      row.appendChild(box);
+      const input = box.querySelector("input");
+      input.focus();
+      box.querySelector("[data-cancel-block]").onclick = () => { box.remove(); delete b.dataset.formOpen; };
+      box.querySelector("[data-do-block]").onclick = () => toggleBlock(b.dataset.toggle, true, input.value.trim() || "Indisponible");
     };
   });
+}
+
+async function toggleBlock(id, blocked, reason) {
+  const { error } = await supabase.from("song_library")
+    .update({ is_blocked: blocked, blocked_reason: blocked ? reason : null })
+    .eq("id", id);
+  if (error) return toast(error.message, true);
+  await refreshAll();
 }
 
 libForm.onsubmit = async (e) => {
