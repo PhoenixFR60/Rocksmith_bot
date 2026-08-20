@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rocksmith Live</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="brand">
+    <h1 id="brand">🎸 Rocksmith Live</h1>
+    <span class="status-pill" id="statusPill">…</span>
+  </header>
+
+  <p id="publicMessage" class="muted"></p>
+
+  <h2 class="eyebrow">En cours</h2>
+  <div id="currentBox" class="now-playing"><div class="empty">Chargement…</div></div>
+
+  <h2 class="eyebrow">File d'attente</h2>
+  <div id="queue"><div class="empty">Chargement…</div></div>
+
+  <h2 class="eyebrow">Demander un morceau</h2>
+  <form id="requestForm" class="panel">
+    <label for="pseudo">Ton pseudo</label>
+    <input id="pseudo" name="pseudo" required maxlength="60">
+
+    <div class="row">
+      <div>
+        <label for="artist">Artiste</label>
+        <input id="artist" name="artist" required maxlength="120">
+      </div>
+      <div>
+        <label for="title">Titre</label>
+        <input id="title" name="title" required maxlength="120">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="tuning">Accordage (optionnel)</label>
+        <input id="tuning" name="tuning" maxlength="40">
+      </div>
+      <div>
+        <label for="instrument">Instrument (optionnel)</label>
+        <input id="instrument" name="instrument" maxlength="40">
+      </div>
+    </div>
+
+    <label for="note">Note (optionnel)</label>
+    <textarea id="note" name="note" maxlength="200"></textarea>
+
+    <div class="actions">
+      <button type="submit" class="primary" id="submitBtn">Envoyer la demande</button>
+    </div>
+
+    <div id="result"></div>
+  </form>
+
+  <h2 class="eyebrow">Bibliothèque</h2>
+  <input id="librarySearch" placeholder="Rechercher un artiste ou un titre…" style="margin-bottom:12px">
+  <div id="publicLibrary"><div class="empty">Chargement…</div></div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="config.js"></script>
+<script type="module" src="public.js"></script>
+</body>
+</html>
