@@ -403,7 +403,7 @@ async function finishRequest(id) {
 
 function renderLibrary(rows) {
   libraryList.innerHTML = rows.length ? `<div class="lib-list">${rows.map((x) => `
-    <div class="lib-row">
+    <div class="lib-row" data-row="${x.id}">
       <div class="info">
         <div class="title">${esc(x.artist)} - ${esc(x.title)}</div>
         <div class="sub">${esc(x.tuning || "Accordage non précisé")}${x.instrument ? ` · ${esc(x.instrument)}` : ""}</div>
@@ -411,8 +411,48 @@ function renderLibrary(rows) {
       <span class="badge-state ${x.is_blocked ? "blocked" : "ok"}">
         ${x.is_blocked ? `🚫 ${esc(x.blocked_reason || "Indisponible")}` : "✅ Disponible"}
       </span>
+      <button type="button" class="small" data-edit="${x.id}" data-artist="${esc(x.artist)}" data-title="${esc(x.title)}" data-tuning="${esc(x.tuning || "")}" data-instrument="${esc(x.instrument || "")}">Éditer</button>
       <button type="button" class="small" data-toggle="${x.id}" data-blocked="${x.is_blocked}">${x.is_blocked ? "Débloquer" : "Bloquer"}</button>
     </div>`).join("")}</div>` : '<div class="empty">Bibliothèque vide. Ajoute ton premier morceau ci-dessus.</div>';
+
+  libraryList.querySelectorAll("[data-edit]").forEach((b) => {
+    b.onclick = () => {
+      if (b.dataset.formOpen) return;
+      b.dataset.formOpen = "1";
+      const row = b.closest(".lib-row");
+      const box = document.createElement("div");
+      box.className = "inline-confirm";
+      box.style.flexBasis = "100%";
+      box.innerHTML = `
+        <div class="row">
+          <input type="text" data-f-artist placeholder="Artiste" value="${b.dataset.artist}">
+          <input type="text" data-f-title placeholder="Titre" value="${b.dataset.title}">
+        </div>
+        <div class="row">
+          <input type="text" data-f-tuning placeholder="Accordage" value="${b.dataset.tuning}">
+          <input type="text" data-f-instrument placeholder="Instrument" value="${b.dataset.instrument}">
+        </div>
+        <div class="row">
+          <button type="button" class="small primary" data-do-edit>Enregistrer</button>
+          <button type="button" class="small ghost" data-cancel-edit>Annuler</button>
+        </div>`;
+      row.appendChild(box);
+      box.querySelector("[data-f-artist]").focus();
+      box.querySelector("[data-cancel-edit]").onclick = () => { box.remove(); delete b.dataset.formOpen; };
+      box.querySelector("[data-do-edit]").onclick = async () => {
+        const artist = box.querySelector("[data-f-artist]").value.trim();
+        const title = box.querySelector("[data-f-title]").value.trim();
+        const tuning = box.querySelector("[data-f-tuning]").value.trim();
+        const instrument = box.querySelector("[data-f-instrument]").value.trim();
+        if (!artist || !title) return toast("Artiste et titre sont obligatoires.", true);
+        const { error } = await supabase.from("song_library")
+          .update({ artist, title, tuning: tuning || null, instrument: instrument || null })
+          .eq("id", b.dataset.edit);
+        if (error) return toast(error.message, true);
+        await refreshAll();
+      };
+    };
+  });
 
   libraryList.querySelectorAll("[data-toggle]").forEach((b) => {
     b.onclick = () => {

@@ -17,13 +17,14 @@ function renderLibrary() {
   const rows = libraryFiltered();
   publicLibrary.innerHTML = rows.length
     ? rows.map((x) => `
-      <div class="request-card">
-        <div>🎵</div>
+      <div class="request-card" style="${x.is_blocked ? "opacity:0.55" : ""}">
+        <div>${x.is_blocked ? "🚫" : "🎵"}</div>
         <div style="flex:1">
           <div class="request-title">${esc(x.artist)} - ${esc(x.title)}</div>
           <div class="small muted">${esc(x.tuning || "")}${x.instrument ? ` · ${esc(x.instrument)}` : ""}</div>
+          ${x.is_blocked ? `<div class="small" style="color:var(--danger)">Indisponible${x.blocked_reason ? ` — ${esc(x.blocked_reason)}` : ""}</div>` : ""}
         </div>
-        <button type="button" class="small" data-fill="${x.id}">Utiliser</button>
+        ${x.is_blocked ? "" : `<button type="button" class="small" data-fill="${x.id}">Utiliser</button>`}
       </div>`).join("")
     : '<div class="empty">Aucun morceau trouvé.</div>';
 
