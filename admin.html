@@ -62,6 +62,7 @@
       <button type="button" class="tab" data-tab="instruments">Instruments</button>
       <button type="button" class="tab" data-tab="matcher">Matcher</button>
       <button type="button" class="tab" data-tab="history">Historique</button>
+      <button type="button" class="tab" data-tab="logs">Logs</button>
       <button type="button" class="tab" data-tab="settings">Paramètres</button>
     </div>
 
@@ -155,6 +156,13 @@
       <div id="historyList"><div class="empty">Aucun historique.</div></div>
     </div>
 
+    <div class="tab-panel" id="panel-logs">
+      <div class="actions" style="margin-bottom:16px">
+        <button type="button" class="small" id="exportLogsBtn">📥 Exporter (CSV)</button>
+      </div>
+      <div id="logsList"><div class="empty">Aucun log.</div></div>
+    </div>
+
     <div class="tab-panel" id="panel-settings">
       <div class="panel">
         <label for="settingsSlug">Slug public <span class="optional">(non modifiable)</span></label>
@@ -167,6 +175,6 @@
 <div id="toast" class="toast"></div>
 
 <script src="config.js"></script>
-<script type="module" src="admin.js?v=20260821100455"></script>
+<script type="module" src="admin.js?v=20260821140453"></script>
 </body>
 </html>

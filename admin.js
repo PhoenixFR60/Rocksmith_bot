@@ -4,6 +4,7 @@ let user = null;
 let channel = null;
 let stream = null;
 let currentInstruments = []; // liste des instruments du channel, réutilisée par les formulaires bibliothèque
+let allStreamsCache = [];
 
 function slugify(s) {
   return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -13,6 +14,16 @@ function slugify(s) {
 function normalizeTitle(s) {
   return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .toLowerCase().replace(/[-_/]+/g, " ").replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+}
+
+async function logEvent(eventType, description) {
+  if (!channel) return;
+  await supabase.from("activity_log").insert({
+    channel_id: channel.id,
+    stream_id: stream?.id || null,
+    event_type: eventType,
+    description,
+  });
 }
 
 // ---- Presets d'accordages par type + nombre de cordes ----
@@ -94,7 +105,9 @@ function renderInstruments(rows) {
       await supabase.from("instruments").update({ is_active: false }).eq("channel_id", channel.id).eq("is_active", true);
       const { error } = await supabase.from("instruments").update({ is_active: true }).eq("id", b.dataset.activate).eq("is_available", true);
       if (error) return toast(error.message, true);
+      const inst = currentInstruments.find((i) => i.id === b.dataset.activate);
       await refreshAll();
+      await logEvent("instrument_activated", `Instrument activé : ${inst ? instrumentLabel(inst) : b.dataset.activate}`);
     };
   });
 
@@ -152,11 +165,13 @@ async function toggleInstrumentAvailability(id, blocked, reason) {
   // Marquer un instrument indisponible le désactive aussi automatiquement :
   // "actif + indisponible" en même temps bloquerait silencieusement
   // l'auto-acceptation du matcher sans que ce soit visible pour le streamer.
+  const inst = currentInstruments.find((i) => i.id === id);
   const update = { is_available: !blocked, unavailable_reason: blocked ? reason : null };
   if (blocked) update.is_active = false;
   const { error } = await supabase.from("instruments").update(update).eq("id", id);
   if (error) return toast(error.message, true);
   await refreshAll();
+  await logEvent("instrument_availability", `${inst ? instrumentLabel(inst) : id} : ${blocked ? `marqué indisponible${reason ? ` (${reason})` : ""}` : "marqué disponible"}`);
 }
 
 function initTabs() {
@@ -232,19 +247,23 @@ setupForm.onsubmit = async (e) => {
 };
 
 async function refreshAll() {
-  const [streamRes, reqRes, libRes, instRes] = await Promise.all([
+  const [streamRes, reqRes, libRes, instRes, allStreamsRes, logsRes] = await Promise.all([
     supabase.from("streams").select("*").eq("channel_id", channel.id).order("started_at", { ascending: false }).limit(1),
     supabase.from("requests").select("*").eq("channel_id", channel.id).order("created_at"),
     supabase.from("song_library").select("*, song_library_instruments(instrument_id)").eq("channel_id", channel.id).order("artist").order("title"),
     supabase.from("instruments").select("*").eq("channel_id", channel.id).order("created_at"),
+    supabase.from("streams").select("id,started_at").eq("channel_id", channel.id).order("started_at", { ascending: false }),
+    supabase.from("activity_log").select("*").eq("channel_id", channel.id).order("created_at", { ascending: false }),
   ]);
   stream = streamRes.data?.[0] || null;
   currentInstruments = instRes.data || [];
+  allStreamsCache = allStreamsRes.data || [];
   renderStreamControls();
   renderRequests(reqRes.data || []);
   renderLibrary(libRes.data || []);
   renderInstruments(currentInstruments);
   renderLibraryInstrumentCheckboxes();
+  renderLogs(logsRes.data || []);
 }
 
 function subscribeRealtime() {
@@ -252,6 +271,7 @@ function subscribeRealtime() {
     .on("postgres_changes", { event: "*", schema: "public", table: "requests", filter: `channel_id=eq.${channel.id}` }, refreshAll)
     .on("postgres_changes", { event: "*", schema: "public", table: "streams", filter: `channel_id=eq.${channel.id}` }, refreshAll)
     .on("postgres_changes", { event: "*", schema: "public", table: "instruments", filter: `channel_id=eq.${channel.id}` }, refreshAll)
+    .on("postgres_changes", { event: "*", schema: "public", table: "activity_log", filter: `channel_id=eq.${channel.id}` }, refreshAll)
     .subscribe();
 }
 
@@ -287,6 +307,7 @@ async function startStream() {
   const { error } = await supabase.from("streams").insert({ channel_id: channel.id, status: "live", request_state: "closed" });
   if (error) return toast(error.message, true);
   await refreshAll();
+  await logEvent("stream_start", "Live démarré");
 }
 
 async function endStream() {
@@ -301,9 +322,11 @@ async function endStream() {
   streamControls.appendChild(box);
   document.getElementById("cancelEndBtn").onclick = () => box.remove();
   document.getElementById("confirmEndBtn").onclick = async () => {
+    const endedStreamId = stream.id;
     const { error } = await supabase.from("streams").update({ status: "ended", ended_at: new Date().toISOString(), request_state: "closed" }).eq("id", stream.id);
     if (error) return toast(error.message, true);
     await refreshAll();
+    await supabase.from("activity_log").insert({ channel_id: channel.id, stream_id: endedStreamId, event_type: "stream_end", description: "Live terminé" });
   };
 }
 
@@ -311,6 +334,7 @@ async function setRequestState(s) {
   const { error } = await supabase.from("streams").update({ request_state: s }).eq("id", stream.id);
   if (error) return toast(error.message, true);
   await refreshAll();
+  await logEvent("request_state", `Demandes : ${{ open: "ouvertes", paused: "en pause", closed: "fermées" }[s]}`);
 }
 
 // ---- Requests ----
@@ -412,11 +436,13 @@ function renderRequests(all) {
   queuedRequests.querySelectorAll("[data-finish]").forEach((b) => b.onclick = () => finishRequest(b.dataset.finish));
   queuedRequests.querySelectorAll("[data-cancel-queue]").forEach((b) => {
     b.onclick = async () => {
+      const target = queued.find((r) => r.id === b.dataset.cancelQueue);
       const { error } = await supabase.from("requests")
         .update({ status: "rejected", rejection_reason: "Retiré de la file par le streamer" })
         .eq("id", b.dataset.cancelQueue);
       if (error) return toast(error.message, true);
       await refreshAll();
+      if (target) await logEvent("queue_removed", `Retiré de la file : ${target.artist} - ${target.title}`);
     };
   });
   queuedRequests.querySelectorAll("[data-move-up]").forEach((b) => {
@@ -446,10 +472,97 @@ function renderHistory() {
         <div class="request-title">${esc(r.artist)} - ${esc(r.title)}</div>
         <div class="small muted">👤 ${esc(r.pseudo)} · ${statusLabel[r.status] || r.status}${r.rejection_reason ? ` — ${esc(r.rejection_reason)}` : ""} · ${new Date(r.created_at).toLocaleString("fr-FR")}</div>
       </div>
+      <button type="button" class="small danger" data-delete-history="${r.id}">Supprimer</button>
     </div>`).join("") : '<div class="empty">Aucun historique.</div>';
+
+  historyList.querySelectorAll("[data-delete-history]").forEach((b) => {
+    b.onclick = async () => {
+      const { error } = await supabase.from("requests").delete().eq("id", b.dataset.deleteHistory);
+      if (error) return toast(error.message, true);
+      await refreshAll();
+    };
+  });
 }
 
 historyFilter.addEventListener("change", renderHistory);
+
+// ---- Logs (journal d'activité) ----
+
+function renderLogs(logs) {
+  if (!logs.length) {
+    logsList.innerHTML = '<div class="empty">Aucun log.</div>';
+    return;
+  }
+  const byStream = new Map();
+  for (const l of logs) {
+    const key = l.stream_id || "none";
+    if (!byStream.has(key)) byStream.set(key, []);
+    byStream.get(key).push(l);
+  }
+  // Ordonne les groupes par date du stream (plus récent en premier).
+  const streamOrder = allStreamsCache.map((s) => s.id);
+  const keys = [...byStream.keys()].sort((a, b) => {
+    if (a === "none") return 1;
+    if (b === "none") return -1;
+    return streamOrder.indexOf(a) - streamOrder.indexOf(b);
+  });
+
+  logsList.innerHTML = keys.map((key) => {
+    const entries = byStream.get(key);
+    const s = allStreamsCache.find((st) => st.id === key);
+    const label = s ? `Live du ${new Date(s.started_at).toLocaleString("fr-FR")}` : "Hors session";
+    return `
+      <div class="lib-row" style="flex-direction:column; align-items:stretch; margin-bottom:10px">
+        <div style="display:flex; justify-content:space-between; align-items:center">
+          <div class="title small">${esc(label)} <span class="muted">(${entries.length})</span></div>
+          <button type="button" class="small danger" data-delete-stream-logs="${key}">Supprimer ce groupe</button>
+        </div>
+        <div style="margin-top:8px; display:flex; flex-direction:column; gap:4px">
+          ${entries.map((l) => `
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px">
+              <div class="small">${esc(l.description)} <span class="muted">— ${new Date(l.created_at).toLocaleString("fr-FR")}</span></div>
+              <button type="button" class="small ghost icon" data-delete-log="${l.id}" title="Supprimer">✕</button>
+            </div>`).join("")}
+        </div>
+      </div>`;
+  }).join("");
+
+  logsList.querySelectorAll("[data-delete-log]").forEach((b) => {
+    b.onclick = async () => {
+      await supabase.from("activity_log").delete().eq("id", b.dataset.deleteLog);
+      await refreshAll();
+    };
+  });
+  logsList.querySelectorAll("[data-delete-stream-logs]").forEach((b) => {
+    b.onclick = async () => {
+      const key = b.dataset.deleteStreamLogs;
+      if (key === "none") {
+        await supabase.from("activity_log").delete().eq("channel_id", channel.id).is("stream_id", null);
+      } else {
+        await supabase.from("activity_log").delete().eq("stream_id", key);
+      }
+      await refreshAll();
+    };
+  });
+}
+
+exportLogsBtn.onclick = async () => {
+  const { data: logs } = await supabase.from("activity_log").select("*, streams(started_at)").eq("channel_id", channel.id).order("created_at", { ascending: false });
+  const rows = (logs || []).map((l) => [
+    l.streams?.started_at ? new Date(l.streams.started_at).toLocaleString("fr-FR") : "Hors session",
+    new Date(l.created_at).toLocaleString("fr-FR"),
+    l.event_type,
+    l.description.replace(/"/g, '""'),
+  ]);
+  const csv = ["Stream,Date,Type,Description", ...rows.map((r) => r.map((v) => `"${v}"`).join(","))].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `rocksmith-logs-${channel.slug}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
 
 function showRejectForm(btn) {
   if (btn.dataset.formOpen) return;
@@ -495,6 +608,7 @@ async function acceptRequest(id, chosenCandidate) {
       if (error) return toast(error.message, true);
       toast("Morceau confirmé mais absent de la bibliothèque — conservé de côté.");
       await refreshAll();
+      await logEvent("song_missing", `Confirmé mais absent de la bibliothèque : ${targetArtist} - ${targetTitle}`);
       return;
     }
   } else {
@@ -517,6 +631,7 @@ async function acceptRequest(id, chosenCandidate) {
     if (error) return toast(error.message, true);
     toast("Déjà en file — fusionné avec un vote 🔥 en plus.");
     await refreshAll();
+    await logEvent("hype_merged", `Vote 🔥 ajouté : ${targetArtist} - ${targetTitle}`);
     return;
   }
 
@@ -532,12 +647,15 @@ async function acceptRequest(id, chosenCandidate) {
   const { error } = await supabase.from("requests").update(update).eq("id", id);
   if (error) return toast(error.message, true);
   await refreshAll();
+  await logEvent("queue_added", `Ajouté à la file : ${targetArtist} - ${targetTitle}`);
 }
 
 async function rejectRequest(id, reason) {
+  const { data: current } = await supabase.from("requests").select("artist,title").eq("id", id).single();
   const { error } = await supabase.from("requests").update({ status: "rejected", rejection_reason: reason }).eq("id", id);
   if (error) return toast(error.message, true);
   await refreshAll();
+  if (current) await logEvent("request_rejected", `Demande refusée : ${current.artist} - ${current.title}${reason ? ` (${reason})` : ""}`);
 }
 
 async function playRequest(id) {
@@ -550,12 +668,15 @@ async function playRequest(id) {
     current_artist: current.artist, current_title: current.title, current_requester: current.pseudo,
   }).eq("id", stream.id);
   await refreshAll();
+  await logEvent("song_started", `Morceau lancé : ${current.artist} - ${current.title}`);
 }
 
 async function finishRequest(id) {
+  const { data: current } = await supabase.from("requests").select("artist,title").eq("id", id).single();
   await supabase.from("requests").update({ status: "played" }).eq("id", id);
   await supabase.from("streams").update({ current_artist: null, current_title: null, current_requester: null }).eq("id", stream.id);
   await refreshAll();
+  if (current) await logEvent("song_finished", `Morceau terminé : ${current.artist} - ${current.title}`);
 }
 
 async function swapQueuePosition(id, queuedOnly, direction) {
@@ -591,6 +712,7 @@ addToQueueForm.onsubmit = async (e) => {
   if (error) return toast(error.message, true);
   e.target.reset();
   await refreshAll();
+  await logEvent("queue_added_manual", `Ajouté manuellement à la file : ${artistVal} - ${titleVal}`);
 };
 
 // ---- Library ----
@@ -695,11 +817,13 @@ function renderLibrary(rows) {
 }
 
 async function toggleBlock(id, blocked, reason) {
+  const { data: song } = await supabase.from("song_library").select("artist,title").eq("id", id).single();
   const { error } = await supabase.from("song_library")
     .update({ is_blocked: blocked, blocked_reason: blocked ? reason : null })
     .eq("id", id);
   if (error) return toast(error.message, true);
   await refreshAll();
+  if (song) await logEvent("library_block", `${song.artist} - ${song.title} : ${blocked ? `bloqué${reason ? ` (${reason})` : ""}` : "débloqué"}`);
 }
 
 function renderLibraryInstrumentCheckboxes() {
@@ -729,6 +853,7 @@ libForm.onsubmit = async (e) => {
   }
   e.target.reset();
   await refreshAll();
+  await logEvent("library_added", `Ajouté à la bibliothèque : ${inserted.artist} - ${inserted.title}`);
 };
 
 // ---- Matcher (mode test / dry-run) ----
