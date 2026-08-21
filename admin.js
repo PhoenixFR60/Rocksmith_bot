@@ -315,7 +315,10 @@ async function setRequestState(s) {
 
 // ---- Requests ----
 
+let allRequestsCache = [];
+
 function renderRequests(all) {
+  allRequestsCache = all;
   const pending = all.filter((r) => r.status === "pending");
   const missing = all.filter((r) => r.status === "missing");
   const queued = all.filter((r) => (r.status === "queued" || r.status === "playing")).sort((a, b) => {
@@ -424,7 +427,29 @@ function renderRequests(all) {
     if (b.disabled) return;
     b.onclick = () => swapQueuePosition(b.dataset.moveDown, queuedOnly, 1);
   });
+
+  renderHistory();
 }
+
+function renderHistory() {
+  const filter = historyFilter.value;
+  const history = allRequestsCache
+    .filter((r) => ["played", "rejected", "merged"].includes(r.status))
+    .filter((r) => !filter || r.status === filter)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  const statusLabel = { played: "✅ Jouée", rejected: "🚫 Refusée", merged: "🔥 Fusionnée" };
+
+  historyList.innerHTML = history.length ? history.map((r) => `
+    <div class="request-card">
+      <div style="flex:1">
+        <div class="request-title">${esc(r.artist)} - ${esc(r.title)}</div>
+        <div class="small muted">👤 ${esc(r.pseudo)} · ${statusLabel[r.status] || r.status}${r.rejection_reason ? ` — ${esc(r.rejection_reason)}` : ""} · ${new Date(r.created_at).toLocaleString("fr-FR")}</div>
+      </div>
+    </div>`).join("") : '<div class="empty">Aucun historique.</div>';
+}
+
+historyFilter.addEventListener("change", renderHistory);
 
 function showRejectForm(btn) {
   if (btn.dataset.formOpen) return;
