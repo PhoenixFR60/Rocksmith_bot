@@ -492,6 +492,10 @@ matcherForm.onsubmit = async (e) => {
     <div class="small muted" style="margin-top:10px">
       Statut des sources : ${Object.entries(data.source_status || {}).map(([k, v]) => `${esc(k)} → ${esc(v)}`).join(" · ")}
     </div>
+    <details style="margin-top:10px">
+      <summary class="small muted" style="cursor:pointer">Détails techniques (candidats bruts par source)</summary>
+      <pre class="small muted" style="white-space:pre-wrap; margin-top:8px">${esc(JSON.stringify(data.raw_candidates || [], null, 2))}</pre>
+    </details>
   `;
 };
 
