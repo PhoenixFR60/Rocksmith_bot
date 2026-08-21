@@ -5,6 +5,8 @@ let channel = null;
 let stream = null;
 let currentInstruments = []; // liste des instruments du channel, réutilisée par les formulaires bibliothèque
 let allStreamsCache = [];
+let collapsedStreamGroups = new Set();
+let allLogsCache = [];
 
 function slugify(s) {
   return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -490,13 +492,14 @@ function renderHistory() {
     const entries = byStream.get(key);
     const s = allStreamsCache.find((st) => st.id === key);
     const label = s ? `Live du ${new Date(s.started_at).toLocaleString("fr-FR")}` : "Hors session";
+    const collapsed = collapsedStreamGroups.has(`history-${key}`);
     return `
       <div class="lib-row" style="flex-direction:column; align-items:stretch; margin-bottom:10px">
-        <div style="display:flex; justify-content:space-between; align-items:center">
-          <div class="title small">${esc(label)} <span class="muted">(${entries.length})</span></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer" data-toggle-group="history-${key}">
+          <div class="title small">${collapsed ? "▶" : "▼"} ${esc(label)} <span class="muted">(${entries.length})</span></div>
           <button type="button" class="small danger" data-delete-stream-history="${key}">Supprimer ce groupe</button>
         </div>
-        <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px">
+        <div style="margin-top:8px; display:${collapsed ? "none" : "flex"}; flex-direction:column; gap:6px" data-group-body="history-${key}">
           ${entries.map((r) => `
             <div class="request-card" style="padding:8px 4px">
               <div style="flex:1">
@@ -517,12 +520,21 @@ function renderHistory() {
     };
   });
   historyList.querySelectorAll("[data-delete-stream-history]").forEach((b) => {
-    b.onclick = async () => {
+    b.onclick = async (e) => {
+      e.stopPropagation();
       const key = b.dataset.deleteStreamHistory;
       const ids = byStream.get(key).map((r) => r.id);
       const { error } = await supabase.from("requests").delete().in("id", ids);
       if (error) return toast(error.message, true);
       await refreshAll();
+    };
+  });
+  historyList.querySelectorAll("[data-toggle-group]").forEach((headerEl) => {
+    headerEl.onclick = () => {
+      const key = headerEl.dataset.toggleGroup;
+      if (collapsedStreamGroups.has(key)) collapsedStreamGroups.delete(key);
+      else collapsedStreamGroups.add(key);
+      renderHistory();
     };
   });
 }
@@ -548,6 +560,8 @@ clearAllHistoryBtn.onclick = async () => {
       .map((r) => r.id);
     const { error } = await supabase.from("requests").delete().in("id", ids);
     if (error) return toast(error.message, true);
+    box.remove();
+    delete clearAllHistoryBtn.dataset.formOpen;
     await refreshAll();
   };
 };
@@ -557,6 +571,7 @@ historyFilter.addEventListener("change", renderHistory);
 // ---- Logs (journal d'activité) ----
 
 function renderLogs(logs) {
+  allLogsCache = logs;
   if (!logs.length) {
     logsList.innerHTML = '<div class="empty">Aucun log.</div>';
     return;
@@ -579,13 +594,14 @@ function renderLogs(logs) {
     const entries = byStream.get(key);
     const s = allStreamsCache.find((st) => st.id === key);
     const label = s ? `Live du ${new Date(s.started_at).toLocaleString("fr-FR")}` : "Hors session";
+    const collapsed = collapsedStreamGroups.has(`logs-${key}`);
     return `
       <div class="lib-row" style="flex-direction:column; align-items:stretch; margin-bottom:10px">
-        <div style="display:flex; justify-content:space-between; align-items:center">
-          <div class="title small">${esc(label)} <span class="muted">(${entries.length})</span></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer" data-toggle-group="logs-${key}">
+          <div class="title small">${collapsed ? "▶" : "▼"} ${esc(label)} <span class="muted">(${entries.length})</span></div>
           <button type="button" class="small danger" data-delete-stream-logs="${key}">Supprimer ce groupe</button>
         </div>
-        <div style="margin-top:8px; display:flex; flex-direction:column; gap:4px">
+        <div style="margin-top:8px; display:${collapsed ? "none" : "flex"}; flex-direction:column; gap:4px">
           ${entries.map((l) => `
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px">
               <div class="small">${esc(l.description)} <span class="muted">— ${new Date(l.created_at).toLocaleString("fr-FR")}</span></div>
@@ -602,7 +618,8 @@ function renderLogs(logs) {
     };
   });
   logsList.querySelectorAll("[data-delete-stream-logs]").forEach((b) => {
-    b.onclick = async () => {
+    b.onclick = async (e) => {
+      e.stopPropagation();
       const key = b.dataset.deleteStreamLogs;
       if (key === "none") {
         await supabase.from("activity_log").delete().eq("channel_id", channel.id).is("stream_id", null);
@@ -610,6 +627,14 @@ function renderLogs(logs) {
         await supabase.from("activity_log").delete().eq("stream_id", key);
       }
       await refreshAll();
+    };
+  });
+  logsList.querySelectorAll("[data-toggle-group]").forEach((headerEl) => {
+    headerEl.onclick = () => {
+      const key = headerEl.dataset.toggleGroup;
+      if (collapsedStreamGroups.has(key)) collapsedStreamGroups.delete(key);
+      else collapsedStreamGroups.add(key);
+      renderLogs(allLogsCache);
     };
   });
 }
