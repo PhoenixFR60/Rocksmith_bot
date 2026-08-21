@@ -67,7 +67,9 @@ instrumentForm.onsubmit = async (e) => {
 };
 
 function renderInstruments(rows) {
-  instrumentsList.innerHTML = rows.length ? `<div class="lib-list">${rows.map((x) => `
+  const noneActive = rows.length > 0 && !rows.some((x) => x.is_active);
+  instrumentsList.innerHTML = (noneActive ? '<div class="notice warn" style="margin-bottom:12px">⚠️ Aucun instrument actif — active-en un pour que le Matcher puisse vérifier la compatibilité des demandes.</div>' : "")
+    + (rows.length ? `<div class="lib-list">${rows.map((x) => `
     <div class="lib-row">
       <div class="info">
         <div class="title">${esc(x.name || `${x.type === "basse" ? "Basse" : "Guitare"} ${x.string_count} cordes`)}${x.is_active ? " · <span style=\"color:var(--ember)\">Actif</span>" : ""}</div>
@@ -79,7 +81,7 @@ function renderInstruments(rows) {
       ${!x.is_active ? `<button type="button" class="small primary" data-activate="${x.id}">Activer</button>` : ""}
       <button type="button" class="small" data-toggle-avail="${x.id}" data-available="${x.is_available}">${x.is_available ? "Marquer indisponible" : "Marquer disponible"}</button>
       <button type="button" class="small danger" data-delete-inst="${x.id}">Supprimer</button>
-    </div>`).join("")}</div>` : '<div class="empty">Aucun instrument configuré. Ajoute ton premier instrument ci-dessus.</div>';
+    </div>`).join("")}</div>` : '<div class="empty">Aucun instrument configuré. Ajoute ton premier instrument ci-dessus.</div>');
 
   instrumentsList.querySelectorAll("[data-activate]").forEach((b) => {
     b.onclick = async () => {
@@ -141,9 +143,12 @@ function renderInstruments(rows) {
 }
 
 async function toggleInstrumentAvailability(id, blocked, reason) {
-  const { error } = await supabase.from("instruments")
-    .update({ is_available: !blocked, unavailable_reason: blocked ? reason : null })
-    .eq("id", id);
+  // Marquer un instrument indisponible le désactive aussi automatiquement :
+  // "actif + indisponible" en même temps bloquerait silencieusement
+  // l'auto-acceptation du matcher sans que ce soit visible pour le streamer.
+  const update = { is_available: !blocked, unavailable_reason: blocked ? reason : null };
+  if (blocked) update.is_active = false;
+  const { error } = await supabase.from("instruments").update(update).eq("id", id);
   if (error) return toast(error.message, true);
   await refreshAll();
 }
