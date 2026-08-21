@@ -93,7 +93,7 @@ function renderInstruments(rows) {
   instrumentsList.querySelectorAll("[data-toggle-avail]").forEach((b) => {
     b.onclick = () => {
       const isAvailable = b.dataset.available === "true";
-      if (isAvailable) return toggleInstrumentAvailability(b.dataset.toggleAvail, false, null);
+      if (!isAvailable) return toggleInstrumentAvailability(b.dataset.toggleAvail, false, null);
       if (b.dataset.formOpen) return;
       b.dataset.formOpen = "1";
       const row = b.closest(".lib-row");
