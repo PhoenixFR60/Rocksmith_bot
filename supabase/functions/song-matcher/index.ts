@@ -96,6 +96,27 @@ function similarity(a: string, b: string): number {
   return (2 * matches) / (ga.length + gb.length);
 }
 
+// Code phonétique simplifié (Soundex) — reconnaît "sike" et "sick" comme
+// équivalents même si aucune lettre en commun au bon endroit, utile pour
+// un titre très court/déformé où la comparaison de texte échoue toujours.
+function soundex(s: string): string {
+  const codes: Record<string, string> = {
+    b: "1", f: "1", p: "1", v: "1",
+    c: "2", g: "2", j: "2", k: "2", q: "2", s: "2", x: "2", z: "2",
+    d: "3", t: "3", l: "4", m: "5", n: "5", r: "6",
+  };
+  const clean = normalize(s).replace(/[^a-z]/g, "");
+  if (!clean) return "";
+  let result = clean[0].toUpperCase();
+  let prevCode = codes[clean[0]] || "";
+  for (let i = 1; i < clean.length && result.length < 4; i++) {
+    const code = codes[clean[i]] || "";
+    if (code && code !== prevCode) result += code;
+    prevCode = code;
+  }
+  return (result + "000").slice(0, 4);
+}
+
 interface Candidate {
   artist: string;
   title: string;
@@ -271,6 +292,7 @@ Deno.serve(async (req) => {
 
     const input = { artist, title };
     const shortTitle = normalize(title).length <= 6;
+    const inputSoundex = shortTitle ? soundex(title) : "";
 
     const scored = [...groups.values()].map((g) => {
       const titleSim = similarity(input.title, g.title);
@@ -289,6 +311,13 @@ Deno.serve(async (req) => {
       // plus que la similarité de texte locale, structurellement faible sur
       // peu de caractères (équivalent du "Short Title Rescue" historique).
       let base = shortTitle ? rankScore * 0.85 + stringScore * 0.15 : stringScore * 0.7 + rankScore * 0.3;
+
+      // Bonus décisif si le titre est phonétiquement identique (ex: "sike"
+      // vs "S!CK") — une comparaison de lettres ne peut pas voir ça, même
+      // avec une seule source qui a trouvé la bonne réponse.
+      if (shortTitle && inputSoundex && soundex(g.title) === inputSoundex && artistSim >= 0.5) {
+        base = Math.min(base + 0.3, 1);
+      }
 
       // Garde-fou : un mauvais artiste ne doit jamais remonter haut, même avec
       // un bon score de titre/consensus.
