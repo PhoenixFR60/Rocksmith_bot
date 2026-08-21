@@ -69,7 +69,7 @@ function renderQueue(rows) {
       <div class="ticket">
         <div class="pos">#${i + 1}</div>
         <div class="body">
-          <div class="song">${esc(x.artist)} - ${esc(x.title)}</div>
+          <div class="song">${esc(x.artist)} - ${esc(x.title)}${x.hype_count > 1 ? ` <span style="color:var(--ember)">🔥${x.hype_count}</span>` : ""}</div>
           <div class="meta">👤 ${esc(x.pseudo)}${x.tuning ? ` · ${esc(x.tuning)}` : ""}</div>
         </div>
       </div>`).join("")

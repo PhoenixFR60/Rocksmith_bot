@@ -10,6 +10,11 @@ function slugify(s) {
     .toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
+function normalizeTitle(s) {
+  return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[-_/]+/g, " ").replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+}
+
 // ---- Presets d'accordages par type + nombre de cordes ----
 const TUNING_PRESETS = {
   "basse-4": ["EADG (standard)", "DADG (drop D)"],
@@ -312,10 +317,28 @@ async function setRequestState(s) {
 
 function renderRequests(all) {
   const pending = all.filter((r) => r.status === "pending");
+  const missing = all.filter((r) => r.status === "missing");
   const queued = all.filter((r) => (r.status === "queued" || r.status === "playing")).sort((a, b) => {
     if (a.status === "playing") return -1;
     if (b.status === "playing") return 1;
     return (a.queue_position ?? 0) - (b.queue_position ?? 0);
+  });
+
+  missingSongsWrap.style.display = missing.length ? "block" : "none";
+  missingSongs.innerHTML = missing.map((r) => `
+    <div class="ticket">
+      <div class="body">
+        <div class="song">${esc(r.artist)} - ${esc(r.title)}</div>
+        <div class="meta">👤 ${esc(r.pseudo)} · confirmé, morceau à ajouter à la bibliothèque</div>
+      </div>
+      <button type="button" class="small danger" data-clear-missing="${r.id}">Retirer</button>
+    </div>`).join("");
+  missingSongs.querySelectorAll("[data-clear-missing]").forEach((b) => {
+    b.onclick = async () => {
+      const { error } = await supabase.from("requests").update({ status: "rejected", rejection_reason: "Morceau non ajouté à la bibliothèque" }).eq("id", b.dataset.clearMissing);
+      if (error) return toast(error.message, true);
+      await refreshAll();
+    };
   });
 
   pendingBadge.style.display = pending.length ? "inline-block" : "none";
@@ -353,7 +376,7 @@ function renderRequests(all) {
     <div class="ticket ${r.status === "playing" ? "playing" : ""}">
       <div class="pos">${r.status === "playing" ? "▶" : `#${i + (queued[0]?.status === "playing" ? 0 : 1)}`}</div>
       <div class="body">
-        <div class="song">${esc(r.artist)} - ${esc(r.title)}</div>
+        <div class="song">${esc(r.artist)} - ${esc(r.title)}${r.hype_count > 1 ? ` <span style="color:var(--ember)">🔥${r.hype_count}</span>` : ""}</div>
         <div class="meta">👤 ${esc(r.pseudo)} · ${r.status === "playing" ? "en cours" : "en file"}</div>
       </div>
       ${r.status === "queued" ? `<button type="button" class="small primary" data-play="${r.id}">Lancer</button>` : `<button type="button" class="small" data-finish="${r.id}">Terminer</button>`}
@@ -394,12 +417,59 @@ function showRejectForm(btn) {
 }
 
 async function acceptRequest(id, chosenCandidate) {
+  let targetArtist, targetTitle;
+  if (chosenCandidate) {
+    targetArtist = chosenCandidate.artist;
+    targetTitle = chosenCandidate.title;
+
+    // Un candidat choisi ne va en file QUE s'il est réellement dans la
+    // bibliothèque et compatible avec l'instrument actif+disponible —
+    // sinon on le garde de côté (morceau probablement à télécharger).
+    const [{ data: library }, { data: activeInst }] = await Promise.all([
+      supabase.from("song_library").select("id,artist,title,song_library_instruments(instrument_id)").eq("channel_id", channel.id).eq("is_blocked", false),
+      supabase.from("instruments").select("id").eq("channel_id", channel.id).eq("is_active", true).eq("is_available", true).limit(1),
+    ]);
+    const activeId = activeInst?.[0]?.id;
+    const matched = (library || []).find((s) => normalizeTitle(s.artist) === normalizeTitle(targetArtist) && normalizeTitle(s.title) === normalizeTitle(targetTitle));
+    const compatible = Boolean(matched && activeId && (matched.song_library_instruments || []).some((l) => l.instrument_id === activeId));
+
+    if (!compatible) {
+      const { error } = await supabase.from("requests")
+        .update({ status: "missing", artist: targetArtist, title: targetTitle, matcher_score: chosenCandidate.score })
+        .eq("id", id);
+      if (error) return toast(error.message, true);
+      toast("Morceau confirmé mais absent de la bibliothèque — conservé de côté.");
+      await refreshAll();
+      return;
+    }
+  } else {
+    const { data: current } = await supabase.from("requests").select("artist,title").eq("id", id).single();
+    targetArtist = current?.artist;
+    targetTitle = current?.title;
+  }
+
+  // Fusion "hype" : si le même morceau est déjà en file/en cours, on
+  // n'ajoute pas une seconde entrée — on compte juste un vote de plus.
+  const { data: dupes } = await supabase.from("requests").select("id,artist,title,hype_count")
+    .eq("channel_id", channel.id).in("status", ["queued", "playing"]);
+  const dup = (dupes || []).find((d) => normalizeTitle(d.artist) === normalizeTitle(targetArtist) && normalizeTitle(d.title) === normalizeTitle(targetTitle));
+
+  if (dup) {
+    await supabase.from("requests").update({ hype_count: (dup.hype_count || 1) + 1 }).eq("id", dup.id);
+    const mergeUpdate = { status: "merged", merged_into: dup.id };
+    if (chosenCandidate) { mergeUpdate.artist = targetArtist; mergeUpdate.title = targetTitle; }
+    const { error } = await supabase.from("requests").update(mergeUpdate).eq("id", id);
+    if (error) return toast(error.message, true);
+    toast("Déjà en file — fusionné avec un vote 🔥 en plus.");
+    await refreshAll();
+    return;
+  }
+
   const { data: maxRow } = await supabase.from("requests").select("queue_position")
     .eq("channel_id", channel.id).eq("status", "queued").order("queue_position", { ascending: false }).limit(1).maybeSingle();
   const nextPos = (maxRow?.queue_position ?? 0) + 1;
   const update = { status: "queued", queue_position: nextPos };
   if (chosenCandidate) {
-    // Corrige artiste/titre sur la correspondance choisie par le streamer.
     update.artist = chosenCandidate.artist;
     update.title = chosenCandidate.title;
     update.matcher_score = chosenCandidate.score;

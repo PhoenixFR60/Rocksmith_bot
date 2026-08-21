@@ -129,13 +129,32 @@ Deno.serve(async (req) => {
     let status: string;
     let rejectionReason: string | null = null;
     let queuePosition: number | null = null;
+    let mergedInto: string | null = null;
 
     if (best && best.score >= AUTO_ACCEPT_THRESHOLD && compatible) {
-      status = "queued";
-      const maxRows = await rest(
-        `requests?channel_id=eq.${channel.id}&status=eq.queued&select=queue_position&order=queue_position.desc&limit=1`
+      // Fusion "hype" : si le même morceau est déjà en file/en cours, on
+      // n'ajoute pas une seconde entrée — on compte juste un vote de plus.
+      const dupes = await rest(
+        `requests?channel_id=eq.${channel.id}&status=in.(queued,playing)&select=id,artist,title,hype_count`
       );
-      queuePosition = (maxRows?.[0]?.queue_position ?? 0) + 1;
+      const dup = (dupes || []).find(
+        (d: any) => normalize(d.artist) === normalize(targetArtist) && normalize(d.title) === normalize(targetTitle)
+      );
+      if (dup) {
+        status = "merged";
+        mergedInto = dup.id;
+        await rest(`requests?id=eq.${dup.id}`, {
+          method: "PATCH",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({ hype_count: (dup.hype_count || 1) + 1 }),
+        });
+      } else {
+        status = "queued";
+        const maxRows = await rest(
+          `requests?channel_id=eq.${channel.id}&status=eq.queued&select=queue_position&order=queue_position.desc&limit=1`
+        );
+        queuePosition = (maxRows?.[0]?.queue_position ?? 0) + 1;
+      }
     } else if (candidates.length > 0) {
       status = "pending"; // choix manuel du streamer (étape 4)
     } else {
@@ -161,11 +180,13 @@ Deno.serve(async (req) => {
         queue_position: queuePosition,
         matcher_score: best?.score ?? null,
         matcher_candidates: candidates.length ? candidates : null,
+        merged_into: mergedInto,
       }),
     });
 
     const messages: Record<string, string> = {
       queued: "Demande envoyée et ajoutée directement à la file !",
+      merged: "Ce morceau est déjà demandé — ton vote a été ajouté (🔥) !",
       pending: "Demande envoyée — le streamer va vérifier la correspondance.",
       rejected: rejectionReason || "Demande refusée.",
     };
