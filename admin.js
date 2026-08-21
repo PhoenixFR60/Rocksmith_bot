@@ -372,15 +372,28 @@ function renderRequests(all) {
       </div>
     </div>`).join("") : '<div class="empty">Aucune demande en attente.</div>';
 
-  queuedRequests.innerHTML = queued.length ? queued.map((r, i) => `
+  const queuedOnly = queued.filter((r) => r.status === "queued");
+  queuedRequests.innerHTML = queued.length ? queued.map((r, i) => {
+    const qIndex = queuedOnly.findIndex((q) => q.id === r.id);
+    const canMoveUp = r.status === "queued" && qIndex > 0;
+    const canMoveDown = r.status === "queued" && qIndex < queuedOnly.length - 1 && qIndex !== -1;
+    return `
     <div class="ticket ${r.status === "playing" ? "playing" : ""}">
       <div class="pos">${r.status === "playing" ? "▶" : `#${i + (queued[0]?.status === "playing" ? 0 : 1)}`}</div>
       <div class="body">
         <div class="song">${esc(r.artist)} - ${esc(r.title)}${r.hype_count > 1 ? ` <span style="color:var(--ember)">🔥${r.hype_count}</span>` : ""}</div>
         <div class="meta">👤 ${esc(r.pseudo)} · ${r.status === "playing" ? "en cours" : "en file"}</div>
       </div>
-      ${r.status === "queued" ? `<button type="button" class="small primary" data-play="${r.id}">Lancer</button>` : `<button type="button" class="small" data-finish="${r.id}">Terminer</button>`}
-    </div>`).join("") : '<div class="empty">File vide.</div>';
+      <div class="actions-inline">
+        ${r.status === "queued" ? `
+          <button type="button" class="small icon ghost" data-move-up="${r.id}" ${canMoveUp ? "" : "disabled"} title="Monter">↑</button>
+          <button type="button" class="small icon ghost" data-move-down="${r.id}" ${canMoveDown ? "" : "disabled"} title="Descendre">↓</button>
+          <button type="button" class="small primary" data-play="${r.id}">Lancer</button>
+          <button type="button" class="small danger" data-cancel-queue="${r.id}">Annuler</button>
+        ` : `<button type="button" class="small" data-finish="${r.id}">Terminer</button>`}
+      </div>
+    </div>`;
+  }).join("") : '<div class="empty">File vide.</div>';
 
   pendingRequests.querySelectorAll("[data-accept]").forEach((b) => b.onclick = () => acceptRequest(b.dataset.accept));
   pendingRequests.querySelectorAll("[data-reject]").forEach((b) => b.onclick = () => showRejectForm(b));
@@ -394,6 +407,23 @@ function renderRequests(all) {
   });
   queuedRequests.querySelectorAll("[data-play]").forEach((b) => b.onclick = () => playRequest(b.dataset.play));
   queuedRequests.querySelectorAll("[data-finish]").forEach((b) => b.onclick = () => finishRequest(b.dataset.finish));
+  queuedRequests.querySelectorAll("[data-cancel-queue]").forEach((b) => {
+    b.onclick = async () => {
+      const { error } = await supabase.from("requests")
+        .update({ status: "rejected", rejection_reason: "Retiré de la file par le streamer" })
+        .eq("id", b.dataset.cancelQueue);
+      if (error) return toast(error.message, true);
+      await refreshAll();
+    };
+  });
+  queuedRequests.querySelectorAll("[data-move-up]").forEach((b) => {
+    if (b.disabled) return;
+    b.onclick = () => swapQueuePosition(b.dataset.moveUp, queuedOnly, -1);
+  });
+  queuedRequests.querySelectorAll("[data-move-down]").forEach((b) => {
+    if (b.disabled) return;
+    b.onclick = () => swapQueuePosition(b.dataset.moveDown, queuedOnly, 1);
+  });
 }
 
 function showRejectForm(btn) {
@@ -502,6 +532,41 @@ async function finishRequest(id) {
   await supabase.from("streams").update({ current_artist: null, current_title: null, current_requester: null }).eq("id", stream.id);
   await refreshAll();
 }
+
+async function swapQueuePosition(id, queuedOnly, direction) {
+  const idx = queuedOnly.findIndex((q) => q.id === id);
+  const neighbor = queuedOnly[idx + direction];
+  if (!neighbor) return;
+  const current = queuedOnly[idx];
+  await Promise.all([
+    supabase.from("requests").update({ queue_position: neighbor.queue_position }).eq("id", current.id),
+    supabase.from("requests").update({ queue_position: current.queue_position }).eq("id", neighbor.id),
+  ]);
+  await refreshAll();
+}
+
+addToQueueForm.onsubmit = async (e) => {
+  e.preventDefault();
+  const artistVal = queueArtist.value.trim();
+  const titleVal = queueTitle.value.trim();
+  if (!artistVal || !titleVal) return;
+  const { data: maxRow } = await supabase.from("requests").select("queue_position")
+    .eq("channel_id", channel.id).eq("status", "queued").order("queue_position", { ascending: false }).limit(1).maybeSingle();
+  const nextPos = (maxRow?.queue_position ?? 0) + 1;
+  const { error } = await supabase.from("requests").insert({
+    channel_id: channel.id,
+    stream_id: stream?.id || null,
+    pseudo: "Streamer",
+    artist: artistVal,
+    title: titleVal,
+    status: "queued",
+    source: "web",
+    queue_position: nextPos,
+  });
+  if (error) return toast(error.message, true);
+  e.target.reset();
+  await refreshAll();
+};
 
 // ---- Library ----
 
