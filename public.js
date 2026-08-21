@@ -101,16 +101,25 @@ async function load() {
     channel = c;
     brand.textContent = `🎸 ${c.display_name}`;
 
-    const [streamRes, queueRes, libRes] = await Promise.all([
+    const [streamRes, queueRes, libRes, instRes] = await Promise.all([
       supabase.from("streams").select("*").eq("channel_id", c.id).order("started_at", { ascending: false }).limit(1),
       supabase.rpc("public_queue_v0", { p_channel_slug: slug }),
-      supabase.from("song_library").select("*").eq("channel_id", c.id).order("artist").order("title"),
+      supabase.from("song_library").select("*, song_library_instruments(instrument_id)").eq("channel_id", c.id).order("artist").order("title"),
+      supabase.from("instruments").select("id").eq("channel_id", c.id).eq("is_active", true).eq("is_available", true).limit(1),
     ]);
 
     renderStatus(streamRes.data?.[0] || null);
     renderQueue(queueRes.data || []);
 
-    library = libRes.data || [];
+    const activeInstrumentId = instRes.data?.[0]?.id || null;
+    const allSongs = libRes.data || [];
+    // Si un instrument est actif, ne montrer que les morceaux qui lui sont
+    // liés — un morceau sans aucun instrument lié n'est jamais compatible
+    // (cohérent avec la règle utilisée par le pipeline matcher). Sans
+    // instrument actif configuré, tout reste visible (rien à filtrer).
+    library = activeInstrumentId
+      ? allSongs.filter((s) => (s.song_library_instruments || []).some((l) => l.instrument_id === activeInstrumentId))
+      : allSongs;
     librarySearchIndex = library.map((song) => ({
       song,
       searchText: `${song.artist} ${song.title} ${song.tuning || ""} ${song.instrument || ""}`
@@ -156,6 +165,8 @@ librarySearch.addEventListener("input", renderLibrary);
 const realtime = supabase.channel(`public-${slug}`)
   .on("postgres_changes", { event: "*", schema: "public", table: "streams" }, load)
   .on("postgres_changes", { event: "*", schema: "public", table: "song_library" }, load)
+  .on("postgres_changes", { event: "*", schema: "public", table: "instruments" }, load)
+  .on("postgres_changes", { event: "*", schema: "public", table: "song_library_instruments" }, load)
   .subscribe();
 
 refreshTimer = setInterval(load, 5000);
