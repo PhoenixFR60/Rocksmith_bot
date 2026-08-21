@@ -3,6 +3,7 @@ import { supabase, esc, toast } from "./db.js";
 let user = null;
 let channel = null;
 let stream = null;
+let currentInstruments = []; // liste des instruments du channel, réutilisée par les formulaires bibliothèque
 
 function slugify(s) {
   return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -229,14 +230,16 @@ async function refreshAll() {
   const [streamRes, reqRes, libRes, instRes] = await Promise.all([
     supabase.from("streams").select("*").eq("channel_id", channel.id).order("started_at", { ascending: false }).limit(1),
     supabase.from("requests").select("*").eq("channel_id", channel.id).order("created_at"),
-    supabase.from("song_library").select("*").eq("channel_id", channel.id).order("artist").order("title"),
+    supabase.from("song_library").select("*, song_library_instruments(instrument_id)").eq("channel_id", channel.id).order("artist").order("title"),
     supabase.from("instruments").select("*").eq("channel_id", channel.id).order("created_at"),
   ]);
   stream = streamRes.data?.[0] || null;
+  currentInstruments = instRes.data || [];
   renderStreamControls();
   renderRequests(reqRes.data || []);
   renderLibrary(libRes.data || []);
-  renderInstruments(instRes.data || []);
+  renderInstruments(currentInstruments);
+  renderLibraryInstrumentCheckboxes();
 }
 
 function subscribeRealtime() {
@@ -401,25 +404,34 @@ async function finishRequest(id) {
 
 // ---- Library ----
 
+function instrumentLabel(i) {
+  return `${i.name || `${i.type === "basse" ? "Basse" : "Guitare"} ${i.string_count} cordes`} — ${i.tuning}`;
+}
+
 function renderLibrary(rows) {
-  libraryList.innerHTML = rows.length ? `<div class="lib-list">${rows.map((x) => `
+  libraryList.innerHTML = rows.length ? `<div class="lib-list">${rows.map((x) => {
+    const linkedIds = (x.song_library_instruments || []).map((l) => l.instrument_id);
+    const linkedNames = currentInstruments.filter((i) => linkedIds.includes(i.id)).map((i) => i.name || `${i.type === "basse" ? "Basse" : "Guitare"} ${i.string_count} cordes`);
+    return `
     <div class="lib-row" data-row="${x.id}">
       <div class="info">
         <div class="title">${esc(x.artist)} - ${esc(x.title)}</div>
-        <div class="sub">${esc(x.tuning || "Accordage non précisé")}${x.instrument ? ` · ${esc(x.instrument)}` : ""}</div>
+        <div class="sub">${esc(x.tuning || "Accordage non précisé")}${linkedNames.length ? ` · ${linkedNames.map(esc).join(", ")}` : ""}</div>
       </div>
       <span class="badge-state ${x.is_blocked ? "blocked" : "ok"}">
         ${x.is_blocked ? `🚫 ${esc(x.blocked_reason || "Indisponible")}` : "✅ Disponible"}
       </span>
-      <button type="button" class="small" data-edit="${x.id}" data-artist="${esc(x.artist)}" data-title="${esc(x.title)}" data-tuning="${esc(x.tuning || "")}" data-instrument="${esc(x.instrument || "")}">Éditer</button>
+      <button type="button" class="small" data-edit="${x.id}" data-artist="${esc(x.artist)}" data-title="${esc(x.title)}" data-tuning="${esc(x.tuning || "")}" data-linked="${linkedIds.join(",")}">Éditer</button>
       <button type="button" class="small" data-toggle="${x.id}" data-blocked="${x.is_blocked}">${x.is_blocked ? "Débloquer" : "Bloquer"}</button>
-    </div>`).join("")}</div>` : '<div class="empty">Bibliothèque vide. Ajoute ton premier morceau ci-dessus.</div>';
+    </div>`;
+  }).join("")}</div>` : '<div class="empty">Bibliothèque vide. Ajoute ton premier morceau ci-dessus.</div>';
 
   libraryList.querySelectorAll("[data-edit]").forEach((b) => {
     b.onclick = () => {
       if (b.dataset.formOpen) return;
       b.dataset.formOpen = "1";
       const row = b.closest(".lib-row");
+      const linked = b.dataset.linked ? b.dataset.linked.split(",") : [];
       const box = document.createElement("div");
       box.className = "inline-confirm";
       box.style.flexBasis = "100%";
@@ -428,11 +440,16 @@ function renderLibrary(rows) {
           <input type="text" data-f-artist placeholder="Artiste" value="${b.dataset.artist}">
           <input type="text" data-f-title placeholder="Titre" value="${b.dataset.title}">
         </div>
-        <div class="row">
-          <input type="text" data-f-tuning placeholder="Accordage" value="${b.dataset.tuning}">
-          <input type="text" data-f-instrument placeholder="Instrument" value="${b.dataset.instrument}">
+        <input type="text" data-f-tuning placeholder="Accordage" value="${b.dataset.tuning}">
+        <p style="margin-top:10px">Instruments compatibles :</p>
+        <div class="checkbox-list" data-f-instruments>
+          ${currentInstruments.length ? currentInstruments.map((i) => `
+            <label>
+              <input type="checkbox" value="${i.id}" ${linked.includes(i.id) ? "checked" : ""}>
+              ${esc(instrumentLabel(i))}
+            </label>`).join("") : '<div class="empty">Aucun instrument configuré.</div>'}
         </div>
-        <div class="row">
+        <div class="row" style="margin-top:10px">
           <button type="button" class="small primary" data-do-edit>Enregistrer</button>
           <button type="button" class="small ghost" data-cancel-edit>Annuler</button>
         </div>`;
@@ -443,12 +460,18 @@ function renderLibrary(rows) {
         const artist = box.querySelector("[data-f-artist]").value.trim();
         const title = box.querySelector("[data-f-title]").value.trim();
         const tuning = box.querySelector("[data-f-tuning]").value.trim();
-        const instrument = box.querySelector("[data-f-instrument]").value.trim();
+        const selectedIds = [...box.querySelectorAll("[data-f-instruments] input:checked")].map((c) => c.value);
         if (!artist || !title) return toast("Artiste et titre sont obligatoires.", true);
         const { error } = await supabase.from("song_library")
-          .update({ artist, title, tuning: tuning || null, instrument: instrument || null })
+          .update({ artist, title, tuning: tuning || null })
           .eq("id", b.dataset.edit);
         if (error) return toast(error.message, true);
+        await supabase.from("song_library_instruments").delete().eq("song_id", b.dataset.edit);
+        if (selectedIds.length) {
+          const { error: linkError } = await supabase.from("song_library_instruments")
+            .insert(selectedIds.map((instrument_id) => ({ song_id: b.dataset.edit, instrument_id })));
+          if (linkError) return toast(linkError.message, true);
+        }
         await refreshAll();
       };
     };
@@ -488,16 +511,31 @@ async function toggleBlock(id, blocked, reason) {
   await refreshAll();
 }
 
+function renderLibraryInstrumentCheckboxes() {
+  libInstrumentsCheckboxes.innerHTML = currentInstruments.length
+    ? currentInstruments.map((i) => `
+        <label>
+          <input type="checkbox" value="${i.id}">
+          ${esc(i.name || `${i.type === "basse" ? "Basse" : "Guitare"} ${i.string_count} cordes`)} — ${esc(i.tuning)}
+        </label>`).join("")
+    : '<div class="empty">Aucun instrument configuré (onglet Instruments).</div>';
+}
+
 libForm.onsubmit = async (e) => {
   e.preventDefault();
-  const { error } = await supabase.from("song_library").insert({
+  const selectedIds = [...libInstrumentsCheckboxes.querySelectorAll("input:checked")].map((c) => c.value);
+  const { data: inserted, error } = await supabase.from("song_library").insert({
     channel_id: channel.id,
     artist: libArtist.value.trim(),
     title: libTitle.value.trim(),
     tuning: libTuning.value.trim() || null,
-    instrument: libInstrument.value.trim() || null,
-  });
+  }).select().single();
   if (error) return toast(error.message, true);
+  if (selectedIds.length) {
+    const { error: linkError } = await supabase.from("song_library_instruments")
+      .insert(selectedIds.map((instrument_id) => ({ song_id: inserted.id, instrument_id })));
+    if (linkError) return toast(linkError.message, true);
+  }
   e.target.reset();
   await refreshAll();
 };

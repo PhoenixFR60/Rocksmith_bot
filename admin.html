@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rocksmith Live — Admin</title>
-<link rel="stylesheet" href="styles.css?v=20260821092203">
+<link rel="stylesheet" href="styles.css?v=20260821092645">
 </head>
 <body>
 
@@ -78,10 +78,10 @@
           <div><label for="libArtist">Artiste</label><input id="libArtist" required></div>
           <div><label for="libTitle">Titre</label><input id="libTitle" required></div>
         </div>
-        <div class="row">
-          <div><label for="libTuning">Accordage <span class="optional">(optionnel)</span></label><input id="libTuning"></div>
-          <div><label for="libInstrument">Instrument <span class="optional">(optionnel)</span></label><input id="libInstrument"></div>
-        </div>
+        <label for="libTuning">Accordage <span class="optional">(optionnel)</span></label>
+        <input id="libTuning">
+        <label>Instruments compatibles <span class="optional">(optionnel, plusieurs possibles)</span></label>
+        <div id="libInstrumentsCheckboxes" class="checkbox-list"></div>
         <div class="actions"><button type="submit" class="primary">Ajouter à la bibliothèque</button></div>
       </form>
       <div id="libraryList"><div class="empty">Bibliothèque vide.</div></div>
@@ -142,6 +142,6 @@
 <div id="toast" class="toast"></div>
 
 <script src="config.js"></script>
-<script type="module" src="admin.js?v=20260821092203"></script>
+<script type="module" src="admin.js?v=20260821092645"></script>
 </body>
 </html>
