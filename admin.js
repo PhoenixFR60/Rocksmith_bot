@@ -323,14 +323,29 @@ function renderRequests(all) {
 
   pendingRequests.innerHTML = pending.length ? pending.map((r) => `
     <div class="ticket">
-      <div class="body">
-        <div class="song">${esc(r.artist)} - ${esc(r.title)}</div>
-        <div class="meta">👤 ${esc(r.pseudo)}${r.tuning ? ` · ${esc(r.tuning)}` : ""}${r.note ? ` · "${esc(r.note)}"` : ""}</div>
-        ${r.matcher_score != null ? `<div class="meta">🎯 Matcher : ${r.matcher_score}% (sous le seuil ou instrument incompatible — choix manuel requis)</div>` : ""}
-      </div>
-      <div class="actions-inline">
-        <button type="button" class="small primary" data-accept="${r.id}">Accepter</button>
-        <button type="button" class="small danger" data-reject="${r.id}">Refuser</button>
+      <div class="body" style="flex-direction:column; align-items:stretch">
+        <div style="display:flex; align-items:center; gap:12px">
+          <div style="flex:1">
+            <div class="song">${esc(r.artist)} - ${esc(r.title)}</div>
+            <div class="meta">👤 ${esc(r.pseudo)}${r.tuning ? ` · ${esc(r.tuning)}` : ""}${r.note ? ` · "${esc(r.note)}"` : ""}</div>
+          </div>
+          <div class="actions-inline">
+            <button type="button" class="small primary" data-accept="${r.id}">Accepter tel quel</button>
+            <button type="button" class="small danger" data-reject="${r.id}">Refuser</button>
+          </div>
+        </div>
+        ${(r.matcher_candidates || []).length ? `
+          <div class="small muted" style="margin-top:8px">🎯 Correspondances trouvées par le Matcher :</div>
+          <div style="display:flex; flex-direction:column; gap:6px; margin-top:4px">
+            ${r.matcher_candidates.map((c, i) => `
+              <div class="lib-row" style="padding:8px 10px">
+                <div class="info">
+                  <div class="title small">${esc(c.artist)} - ${esc(c.title)}</div>
+                  <div class="sub small">${c.score}% · ${(c.sources || []).map(esc).join(", ")}</div>
+                </div>
+                <button type="button" class="small primary" data-choose-candidate="${r.id}" data-candidate-index="${i}">Choisir</button>
+              </div>`).join("")}
+          </div>` : ""}
       </div>
     </div>`).join("") : '<div class="empty">Aucune demande en attente.</div>';
 
@@ -346,6 +361,14 @@ function renderRequests(all) {
 
   pendingRequests.querySelectorAll("[data-accept]").forEach((b) => b.onclick = () => acceptRequest(b.dataset.accept));
   pendingRequests.querySelectorAll("[data-reject]").forEach((b) => b.onclick = () => showRejectForm(b));
+  pendingRequests.querySelectorAll("[data-choose-candidate]").forEach((b) => {
+    b.onclick = () => {
+      const request = pending.find((r) => r.id === b.dataset.chooseCandidate);
+      const candidate = request?.matcher_candidates?.[Number(b.dataset.candidateIndex)];
+      if (!candidate) return;
+      acceptRequest(b.dataset.chooseCandidate, candidate);
+    };
+  });
   queuedRequests.querySelectorAll("[data-play]").forEach((b) => b.onclick = () => playRequest(b.dataset.play));
   queuedRequests.querySelectorAll("[data-finish]").forEach((b) => b.onclick = () => finishRequest(b.dataset.finish));
 }
@@ -370,11 +393,18 @@ function showRejectForm(btn) {
   box.querySelector("[data-do-reject]").onclick = () => rejectRequest(btn.dataset.reject, input.value.trim() || null);
 }
 
-async function acceptRequest(id) {
+async function acceptRequest(id, chosenCandidate) {
   const { data: maxRow } = await supabase.from("requests").select("queue_position")
     .eq("channel_id", channel.id).eq("status", "queued").order("queue_position", { ascending: false }).limit(1).maybeSingle();
   const nextPos = (maxRow?.queue_position ?? 0) + 1;
-  const { error } = await supabase.from("requests").update({ status: "queued", queue_position: nextPos }).eq("id", id);
+  const update = { status: "queued", queue_position: nextPos };
+  if (chosenCandidate) {
+    // Corrige artiste/titre sur la correspondance choisie par le streamer.
+    update.artist = chosenCandidate.artist;
+    update.title = chosenCandidate.title;
+    update.matcher_score = chosenCandidate.score;
+  }
+  const { error } = await supabase.from("requests").update(update).eq("id", id);
   if (error) return toast(error.message, true);
   await refreshAll();
 }
