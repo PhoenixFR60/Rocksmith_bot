@@ -78,7 +78,7 @@ function renderInstruments(rows) {
       <span class="badge-state ${x.is_available ? "ok" : "blocked"}">
         ${x.is_available ? "✅ Disponible" : `🚫 ${esc(x.unavailable_reason || "Indisponible")}`}
       </span>
-      ${!x.is_active ? `<button type="button" class="small primary" data-activate="${x.id}">Activer</button>` : ""}
+      ${!x.is_active && x.is_available ? `<button type="button" class="small primary" data-activate="${x.id}">Activer</button>` : ""}
       <button type="button" class="small" data-toggle-avail="${x.id}" data-available="${x.is_available}">${x.is_available ? "Marquer indisponible" : "Marquer disponible"}</button>
       <button type="button" class="small danger" data-delete-inst="${x.id}">Supprimer</button>
     </div>`).join("")}</div>` : '<div class="empty">Aucun instrument configuré. Ajoute ton premier instrument ci-dessus.</div>');
@@ -86,7 +86,7 @@ function renderInstruments(rows) {
   instrumentsList.querySelectorAll("[data-activate]").forEach((b) => {
     b.onclick = async () => {
       await supabase.from("instruments").update({ is_active: false }).eq("channel_id", channel.id).eq("is_active", true);
-      const { error } = await supabase.from("instruments").update({ is_active: true }).eq("id", b.dataset.activate);
+      const { error } = await supabase.from("instruments").update({ is_active: true }).eq("id", b.dataset.activate).eq("is_available", true);
       if (error) return toast(error.message, true);
       await refreshAll();
     };
