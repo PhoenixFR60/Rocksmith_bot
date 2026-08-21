@@ -464,16 +464,50 @@ function renderHistory() {
     .filter((r) => !filter || r.status === filter)
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
+  clearAllHistoryBtn.style.display = history.length ? "inline-block" : "none";
+
+  if (!history.length) {
+    historyList.innerHTML = '<div class="empty">Aucun historique.</div>';
+    return;
+  }
+
   const statusLabel = { played: "✅ Jouée", rejected: "🚫 Refusée", merged: "🔥 Fusionnée" };
 
-  historyList.innerHTML = history.length ? history.map((r) => `
-    <div class="request-card">
-      <div style="flex:1">
-        <div class="request-title">${esc(r.artist)} - ${esc(r.title)}</div>
-        <div class="small muted">👤 ${esc(r.pseudo)} · ${statusLabel[r.status] || r.status}${r.rejection_reason ? ` — ${esc(r.rejection_reason)}` : ""} · ${new Date(r.created_at).toLocaleString("fr-FR")}</div>
-      </div>
-      <button type="button" class="small danger" data-delete-history="${r.id}">Supprimer</button>
-    </div>`).join("") : '<div class="empty">Aucun historique.</div>';
+  const byStream = new Map();
+  for (const r of history) {
+    const key = r.stream_id || "none";
+    if (!byStream.has(key)) byStream.set(key, []);
+    byStream.get(key).push(r);
+  }
+  const streamOrder = allStreamsCache.map((s) => s.id);
+  const keys = [...byStream.keys()].sort((a, b) => {
+    if (a === "none") return 1;
+    if (b === "none") return -1;
+    return streamOrder.indexOf(a) - streamOrder.indexOf(b);
+  });
+
+  historyList.innerHTML = keys.map((key) => {
+    const entries = byStream.get(key);
+    const s = allStreamsCache.find((st) => st.id === key);
+    const label = s ? `Live du ${new Date(s.started_at).toLocaleString("fr-FR")}` : "Hors session";
+    return `
+      <div class="lib-row" style="flex-direction:column; align-items:stretch; margin-bottom:10px">
+        <div style="display:flex; justify-content:space-between; align-items:center">
+          <div class="title small">${esc(label)} <span class="muted">(${entries.length})</span></div>
+          <button type="button" class="small danger" data-delete-stream-history="${key}">Supprimer ce groupe</button>
+        </div>
+        <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px">
+          ${entries.map((r) => `
+            <div class="request-card" style="padding:8px 4px">
+              <div style="flex:1">
+                <div class="request-title">${esc(r.artist)} - ${esc(r.title)}</div>
+                <div class="small muted">👤 ${esc(r.pseudo)} · ${statusLabel[r.status] || r.status}${r.rejection_reason ? ` — ${esc(r.rejection_reason)}` : ""} · ${new Date(r.created_at).toLocaleString("fr-FR")}</div>
+              </div>
+              <button type="button" class="small danger" data-delete-history="${r.id}">Supprimer</button>
+            </div>`).join("")}
+        </div>
+      </div>`;
+  }).join("");
 
   historyList.querySelectorAll("[data-delete-history]").forEach((b) => {
     b.onclick = async () => {
@@ -482,7 +516,41 @@ function renderHistory() {
       await refreshAll();
     };
   });
+  historyList.querySelectorAll("[data-delete-stream-history]").forEach((b) => {
+    b.onclick = async () => {
+      const key = b.dataset.deleteStreamHistory;
+      const ids = byStream.get(key).map((r) => r.id);
+      const { error } = await supabase.from("requests").delete().in("id", ids);
+      if (error) return toast(error.message, true);
+      await refreshAll();
+    };
+  });
 }
+
+clearAllHistoryBtn.onclick = async () => {
+  if (clearAllHistoryBtn.dataset.formOpen) return;
+  clearAllHistoryBtn.dataset.formOpen = "1";
+  const box = document.createElement("div");
+  box.className = "inline-confirm";
+  box.innerHTML = `
+    <p>Supprimer tout l'historique visible (selon le filtre actuel) ? Cette action est irréversible.</p>
+    <div class="row">
+      <button type="button" class="small danger" id="confirmClearHistoryBtn">Oui, tout supprimer</button>
+      <button type="button" class="small ghost" id="cancelClearHistoryBtn">Annuler</button>
+    </div>`;
+  clearAllHistoryBtn.parentElement.appendChild(box);
+  document.getElementById("cancelClearHistoryBtn").onclick = () => { box.remove(); delete clearAllHistoryBtn.dataset.formOpen; };
+  document.getElementById("confirmClearHistoryBtn").onclick = async () => {
+    const filter = historyFilter.value;
+    const ids = allRequestsCache
+      .filter((r) => ["played", "rejected", "merged"].includes(r.status))
+      .filter((r) => !filter || r.status === filter)
+      .map((r) => r.id);
+    const { error } = await supabase.from("requests").delete().in("id", ids);
+    if (error) return toast(error.message, true);
+    await refreshAll();
+  };
+};
 
 historyFilter.addEventListener("change", renderHistory);
 
