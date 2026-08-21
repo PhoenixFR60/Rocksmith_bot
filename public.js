@@ -126,21 +126,23 @@ requestForm.onsubmit = async (e) => {
   e.preventDefault();
   submitBtn.disabled = true;
 
-  const { data, error } = await supabase.rpc("submit_request_v0", {
-    p_channel_slug: slug,
-    p_pseudo: pseudo.value.trim(),
-    p_artist: artist.value.trim(),
-    p_title: title.value.trim(),
-    p_tuning: tuning.value.trim(),
-    p_instrument: instrument.value.trim(),
-    p_note: note.value.trim(),
+  const { data, error } = await supabase.functions.invoke("submit-request", {
+    body: {
+      channel_slug: slug,
+      pseudo: pseudo.value.trim(),
+      artist: artist.value.trim(),
+      title: title.value.trim(),
+      tuning: tuning.value.trim(),
+      instrument: instrument.value.trim(),
+      note: note.value.trim(),
+    },
   });
 
   if (error) {
     toast(error.message, true);
     result.innerHTML = "";
   } else {
-    const r = Array.isArray(data) ? data[0] : data;
+    const r = data;
     const ok = r?.result !== "rejected";
     result.innerHTML = `<div class="notice ${ok ? "success" : "error"}">${esc(r?.message || "")}</div>`;
     if (ok) e.target.reset();

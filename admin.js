@@ -326,6 +326,7 @@ function renderRequests(all) {
       <div class="body">
         <div class="song">${esc(r.artist)} - ${esc(r.title)}</div>
         <div class="meta">👤 ${esc(r.pseudo)}${r.tuning ? ` · ${esc(r.tuning)}` : ""}${r.note ? ` · "${esc(r.note)}"` : ""}</div>
+        ${r.matcher_score != null ? `<div class="meta">🎯 Matcher : ${r.matcher_score}% (sous le seuil ou instrument incompatible — choix manuel requis)</div>` : ""}
       </div>
       <div class="actions-inline">
         <button type="button" class="small primary" data-accept="${r.id}">Accepter</button>
